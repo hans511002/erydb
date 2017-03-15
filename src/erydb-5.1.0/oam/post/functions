@@ -1,0 +1,50 @@
+#
+# $Id: functions 2937 2012-05-30 18:17:09Z rdempsey $
+#
+
+if [ -z "$ERYDB_INSTALL_DIR" ]; then
+	test -f /etc/default/erydb && . /etc/default/erydb
+fi
+
+if [ -z "$ERYDB_INSTALL_DIR" ]; then
+	ERYDB_INSTALL_DIR=/usr/local/erydb
+fi
+
+export ERYDB_INSTALL_DIR=$ERYDB_INSTALL_DIR
+
+PATH=$ERYDB_INSTALL_DIR/bin:$PATH
+export PATH
+
+module_type()
+{
+(
+	sed -r 's/[0-9]+$//' $ERYDB_INSTALL_DIR/local/module
+) 2>/dev/null
+}
+
+firstboot()
+{
+	dbrmroot="`getConfig SystemConfig DBRMRoot`"
+	dbrmdir="`dirname $dbrmroot`"
+	test ! -f $dbrmdir/BRM_saves_current
+}
+
+oerydbitmapfile()
+{
+	oidfile="`getConfig OIDManager OERYDBitmapFile`"
+	test ! -f $oidfile
+}
+
+module_name()
+{
+(
+	cat $ERYDB_INSTALL_DIR/local/module
+) 2>/dev/null
+}
+
+module_id()
+{
+(
+	sed -r 's/[a-zA-Z]//g' $ERYDB_INSTALL_DIR/local/module
+) 2>/dev/null
+}

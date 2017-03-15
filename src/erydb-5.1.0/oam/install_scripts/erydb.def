@@ -1,0 +1,9 @@
+#!/bin/bash
+# Copy this file to /etc/default and rename it to 'erydb'.
+
+# Change this line to your EryDB installation directory
+ERYDB_INSTALL_DIR=/usr/local/erydb
+
+LD_LIBRARY_PATH=$ERYDB_INSTALL_DIR/lib:$ERYDB_INSTALL_DIR/mysql/lib/mysql
+export ERYDB_INSTALL_DIR=$ERYDB_INSTALL_DIR
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH

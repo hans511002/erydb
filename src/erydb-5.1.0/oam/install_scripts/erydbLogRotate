@@ -1,0 +1,35 @@
+# 
+# erydb Log Rotate file that gets installed in /etc/logrotate.d
+# as part of the RPM installation
+# 
+
+/var/log/erydb/*.log {
+    missingok
+    rotate 7
+    daily
+    dateext
+	copytruncate
+    olddir /var/log/erydb/archive
+}
+/var/log/erydb/*.log1 {
+    missingok
+    rotate 7
+    daily
+	nocreate
+	compress
+    olddir /var/log/erydb/archive
+}
+/usr/local/erydb/etc/erydb.xml {
+    daily
+    dateext
+	copy
+    olddir /usr/local/erydb/etc/
+}
+/usr/local/erydb/mysql/db/*.err {
+    missingok
+    rotate 7
+    daily
+    dateext
+	copytruncate
+    olddir /usr/local/erydb/mysql/db
+}

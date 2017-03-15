@@ -1,0 +1,138 @@
+--- mysqld--help.result
++++ mysqld--help,win.reject
+@@ -321,7 +321,6 @@ The following options may be given as the first argument:
+  The number of segments in a key cache
+  -L, --language=name Client error messages in given language. May be given as
+  a full path. Deprecated. Use --lc-messages-dir instead.
+- --large-pages       Enable support for large pages
+  --lc-messages=name  Set the language used for the error messages.
+  -L, --lc-messages-dir=name 
+  Directory where error messages are
+@@ -517,6 +516,7 @@ The following options may be given as the first argument:
+  Use MySQL-5.6 (instead of MariaDB-5.3) format for TIME,
+  DATETIME, TIMESTAMP columns.
+  (Defaults to on; use --skip-mysql56-temporal-format to disable.)
++ --named-pipe        Enable the named pipe (NT)
+  --net-buffer-length=# 
+  Buffer length for TCP/IP and socket communication
+  --net-read-timeout=# 
+@@ -906,6 +906,9 @@ The following options may be given as the first argument:
+  files within specified directory
+  --server-id=#       Uniquely identifies the server instance in the community
+  of replication partners
++ --shared-memory     Enable the shared memory
++ --shared-memory-base-name=name 
++ Base name of shared memory
+  --show-slave-auth-info 
+  Show user and password in SHOW SLAVE HOSTS on this
+  master.
+@@ -1016,6 +1019,10 @@ The following options may be given as the first argument:
+  Log slow queries to given log file. Defaults logging to
+  'hostname'-slow.log. Must be enabled to activate other
+  slow log options
++ --slow-start-timeout=# 
++ Maximum number of milliseconds that the service control
++ manager should wait before trying to kill the windows
++ service during startup(Default: 15000).
+  --socket=name       Socket file to use for connection
+  --sort-buffer-size=# 
+  Each thread that needs to do a sort allocates a buffer of
+@@ -1034,6 +1041,7 @@ The following options may be given as the first argument:
+  NO_ENGINE_SUBSTITUTION, PAD_CHAR_TO_FULL_LENGTH
+  --stack-trace       Print a symbolic stack trace on failure
+  (Defaults to on; use --skip-stack-trace to disable.)
++ --standalone        Dummy option to start as a standalone program (NT).
+  --stored-program-cache=# 
+  The soft upper limit for number of cached stored routines
+  for one connection.
+@@ -1070,25 +1078,11 @@ The following options may be given as the first argument:
+  COMMIT, ROLLBACK
+  --thread-cache-size=# 
+  How many threads we should keep in a cache for reuse
+- --thread-pool-idle-timeout=# 
+- Timeout in seconds for an idle thread in the thread
+- pool.Worker thread will be shut down after timeout
+  --thread-pool-max-threads=# 
+  Maximum allowed number of worker threads in the thread
+  pool
+- --thread-pool-oversubscribe=# 
+- How many additional active worker threads in a group are
+- allowed.
+- --thread-pool-size=# 
+- Number of thread groups in the pool. This parameter is
+- roughly equivalent to maximum number of concurrently
+- executing threads (threads in a waiting state do not
+- count as executing).
+- --thread-pool-stall-limit=# 
+- Maximum query execution time in milliseconds,before an
+- executing non-yielding thread is considered stalled.If a
+- worker thread is stalled, additional worker thread may be
+- created to handle remaining clients.
++ --thread-pool-min-threads=# 
++ Minimum number of threads in the thread pool.
+  --thread-stack=#    The stack size for each thread
+  --time-format=name  The TIME format (ignored)
+  --timed-mutexes     Specify whether to time mutexes. Deprecated, has no
+@@ -1097,8 +1091,8 @@ The following options may be given as the first argument:
+  size, MySQL will automatically convert it to an on-disk
+  MyISAM or Aria table
+  -t, --tmpdir=name   Path for temporary files. Several paths may be specified,
+- separated by a colon (:), in this case they are used in a
+- round-robin fashion
++ separated by a semicolon (;), in this case they are used
++ in a round-robin fashion
+  --transaction-alloc-block-size=# 
+  Allocation block size for transactions to be stored in
+  binary log
+@@ -1224,7 +1218,6 @@ key-cache-block-size 1024
+ key-cache-division-limit 100
+ key-cache-file-hash-size 512
+ key-cache-segments 0
+-large-pages FALSE
+ lc-messages en_US
+ lc-messages-dir MYSQL_SHAREDIR/
+ lc-time-names en_US
+@@ -1290,6 +1283,7 @@ myisam-sort-buffer-size 134216704
+ myisam-stats-method NULLS_UNEQUAL
+ myisam-use-mmap FALSE
+ mysql56-temporal-format TRUE
++named-pipe FALSE
+ net-buffer-length 16384
+ net-read-timeout 30
+ net-retry-count 10
+@@ -1386,6 +1380,8 @@ safe-user-create FALSE
+ secure-auth TRUE
+ secure-file-priv (No default value)
+ server-id 0
++shared-memory FALSE
++shared-memory-base-name MYSQL
+ show-slave-auth-info FALSE
+ silent-startup FALSE
+ skip-grant-tables TRUE
+@@ -1409,6 +1405,7 @@ slave-transaction-retries 10
+ slave-type-conversions 
+ slow-launch-time 2
+ slow-query-log FALSE
++slow-start-timeout 15000
+ sort-buffer-size 2097152
+ sql-mode NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+ stack-trace TRUE
+@@ -1421,15 +1418,13 @@ sync-master-info 10000
+ sync-relay-log 10000
+ sync-relay-log-info 10000
+ sysdate-is-now FALSE
+-table-cache 431
++table-cache 2000
+ table-definition-cache 400
+-table-open-cache 431
++table-open-cache 2000
+ tc-heuristic-recover OFF
+ thread-cache-size 0
+-thread-pool-idle-timeout 60
+ thread-pool-max-threads 1000
+-thread-pool-oversubscribe 3
+-thread-pool-stall-limit 500
++thread-pool-min-threads 1
+ thread-stack 295936
+ time-format %H:%i:%s
+ timed-mutexes FALSE

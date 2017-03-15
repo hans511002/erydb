@@ -1,0 +1,2 @@
+
+install(PROGRAMS  ERYDBInstanceCmds.sh ERYDBVolumeCmds.sh DESTINATION ${ENGINE_BINDIR})

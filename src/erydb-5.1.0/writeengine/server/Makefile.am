@@ -1,0 +1,50 @@
+# Copyright (C) 2014 EryDB, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2 of
+# the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+# MA 02110-1301, USA.
+
+# $Id: Makefile.am 696 2011-03-07 21:54:16Z rdempsey $
+## Process this file with automake to produce Makefile.in
+
+AM_CPPFLAGS = $(erydb_common_includes) $(erydb_cppflags)
+AM_CFLAGS = $(erydb_cflags)
+AM_CXXFLAGS = $(erydb_cxxflags)
+AM_LDFLAGS = $(erydb_ldflags)
+bin_PROGRAMS = WriteEngineServer
+WriteEngineServer_SOURCES = we_server.cpp \
+we_readthread.cpp \
+we_ddlcommandproc.cpp \
+we_observer.cpp \
+we_dataloader.cpp \
+we_brmrprtparser.cpp \
+we_dmlcommandproc.cpp \
+we_cleartablelockcmd.cpp \
+we_cpifeederthread.cpp \
+we_getfilesizes.cpp
+include_HEADERS = we_messages.h
+WriteEngineServer_LDFLAGS = $(erydb_common_ldflags) $(erydb_exec_libs) ${abs_top_builddir}/utils/threadpool/libthreadpool.la ${abs_top_builddir}/writeengine/redistribute/libwriteengineredistribute.la $(erydb_write_libs) $(AM_LDFLAGS)
+
+install_server: install
+
+test:
+
+coverage:
+
+leakcheck:
+
+docs:
+
+bootstrap: install-data-am
+

@@ -1,0 +1,204 @@
+#!/bin/bash
+#
+# $Id: erydb 3704 2013-08-07 03:33:20Z bwilkinson $
+#
+# erydb        Starts EryDB database platform
+#
+#
+# chkconfig: 2345 99 99
+# description: EryDB is a database platform that utilizes Mysql
+#
+### BEGIN INIT INFO
+# Provides:          erydb
+# Required-Start:    $local_fs $remote_fs $network $syslog $all
+# Required-Stop:     $local_fs $remote_fs $network $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start/stop EryDB DW DBMS
+### END INIT INFO
+
+# Source function library.
+if [ -f /etc/init.d/functions ]; then
+	. /etc/init.d/functions
+fi
+
+if [ -z "$ERYDB_INSTALL_DIR" ]; then
+	test -f /etc/default/erydb && . /etc/default/erydb
+fi
+
+if [ -z "$ERYDB_INSTALL_DIR" ]; then
+	ERYDB_INSTALL_DIR=/usr/local/erydb
+fi
+
+export ERYDB_INSTALL_DIR=$ERYDB_INSTALL_DIR
+
+InstallDir=$ERYDB_INSTALL_DIR
+
+if [ $InstallDir != "/usr/local/erydb" ]; then
+	export PATH=$InstallDir/bin:$InstallDir/mysql/bin:/bin:/usr/bin
+	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$InstallDir/lib:$InstallDir/mysql/lib/mysql
+fi
+
+#hadoop
+plugin=`$ERYDB_INSTALL_DIR/bin/getConfig SystemConfig DataFilePlugin`
+if [ -n "$plugin" ]; then
+	setenv=`$InstallDir/bin/getConfig SystemConfig DataFileEnvFile`
+	. $InstallDir/bin/$setenv >/dev/null 2>&1
+fi
+
+if [ -e $InstallDir/lib/libjemalloc.so ]; then
+	export LD_PRELOAD=$InstallDir/lib/libjemalloc.so
+elif [ -e $InstallDir/lib/libjemalloc.so.1 ]; then
+	export LD_PRELOAD=$InstallDir/lib/libjemalloc.so.1
+fi
+
+test -f $InstallDir/post/functions && . $InstallDir/post/functions
+
+mt=`module_type`
+mid=`module_id`
+
+has_um=`$InstallDir/bin/getConfig SystemModuleConfig ModuleCount2`
+if [ "x$has_um" = x ]; then
+	has_um=0
+fi
+
+user=$USER
+if [ -z "$user" ]; then
+        user=root
+fi
+
+checkInstallSetup() {
+	InitialInstallFlag=`$InstallDir/bin/getConfig -c $InstallDir/etc/erydb.xml Installation InitialInstallFlag`
+	if [ $InitialInstallFlag != "y" ]; then
+		echo "Please run the postConfigure install script, check the Installation Guide"
+		echo "for additional details"
+		rm -f /var/lock/subsys/erydb
+		exit 1
+	fi
+}
+
+[ -f $InstallDir/bin/ProcMon ] || exit 0
+
+start() {
+	if [ -f /var/lock/subsys/erydb ]; then
+		echo "EryDB Database Platform already running"
+		exit 0
+	fi
+
+	(mkdir -p /var/lock/subsys && touch /var/lock/subsys/erydb) >/dev/null 2>&1
+
+	if [ -x $InstallDir/bin/erydb.pre-start ]; then
+		$InstallDir/bin/erydb.pre-start
+		if [ $? -ne 0 ]; then
+			echo "Error running EryDB pre-start script, not starting EryDB"
+			rm -f /var/lock/subsys/erydb
+			exit 1
+		fi
+	fi
+	checkInstallSetup
+
+	CoreFileFlag=`$InstallDir/bin/getConfig -c $InstallDir/etc/erydb.xml Installation CoreFileFlag`
+	if [ $CoreFileFlag = "y" ]; then
+		SUDO=
+		if [ "$user" != "root" ]; then 
+			SUDO="sudo"
+		fi
+
+		#erydb core files
+		$SUDO ulimit -c unlimited  > /dev/null 2>&1
+		$SUDO sysctl -q -w kernel.core_uses_pid=1  > /dev/null 2>&1
+		$SUDO sysctl -q -w kernel.core_pattern=/var/log/erydb/corefiles/core.%e.%p  > /dev/null 2>&1
+	fi
+
+	RETVAL=0
+	echo "Starting EryDB Database Platform"
+	rm -f /tmp/StopErydb
+	exec $InstallDir/bin/run.sh $InstallDir/bin/ProcMon  > /dev/null 2>&1 &
+  if [ -f "$InstallDir/bin/run_check.sh" ] ; then
+     $InstallDir/bin/run_check.sh  > /dev/null 2>&1 &
+  fi
+	return $RETVAL
+}	
+stop() {
+	echo "Shutting down EryDB Database Platform"
+	rpid=`ps -ef|grep $InstallDir/bin/run_check.sh | grep -v grep | awk '{print $2}'`
+	if [ "$rpid" != "" ] ; then
+		kill -9 $rpid
+	fi
+	rpid=`ps -ef|grep $InstallDir/bin/run.sh | grep -v grep | awk '{print $2}'`
+	if [ "$rpid" != "" ] ; then
+		kill -9 $rpid
+	fi
+	touch /tmp/StopErydb
+        $InstallDir/mysql/mysql-erydb stop
+	pkill -9 ExeMgr
+	pkill -9 controllernode
+	pkill -9 ServerMonitor
+	pkill -9 workernode
+        pkill -9 ProcMon
+        pkill -9 ProcMgr
+        pkill -9 snmptrapd
+        pkill -9 DecomSvr
+        pkill -9 PrimProc
+        pkill -9 WriteEngineServ
+        pkill -9 DDLProc
+        pkill -9 DMLProc
+	sleep 1
+	$InstallDir/bin/clearShm
+	RETVAL=$?
+	rm -f /var/lock/subsys/erydb
+	fuser -k 8604/tcp > /dev/null 2>&1
+	test -f $InstallDir/mysql/mysql-erydb || return $RETVAL
+	$InstallDir/mysql/mysql-erydb stop > /dev/null 2>&1
+	if [ -x $InstallDir/bin/erydb.post-stop ]; then
+		$InstallDir/bin/erydb.post-stop
+	fi
+	return $RETVAL
+}
+restart() {
+	stop
+	start
+}
+status() {
+	isrunning=0
+	if [ $EUID -eq 0 ]; then
+		if [ -f /var/lock/subsys/erydb ]; then
+			isrunning=1
+		fi
+	else
+		pgrep ProcMon >/dev/null 2>&1
+		if [ $? -eq 0 ]; then
+			isrunning=1
+		fi
+	fi
+	if [ $isrunning -ne 0 ]; then
+		echo "EryDB is running"
+	else
+		echo "EryDB is not running"
+		exit 3
+	fi
+}
+
+case "$1" in
+start)
+	start
+	;;
+stop)
+	stop
+	;;
+restart)
+	restart
+	;;
+condrestart)
+	[ -f /var/lock/subsys/erydb ] && restart || :
+	;;
+status)
+	status
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart|condrestart|status}"
+	exit 1
+esac
+
+exit $?
+
