@@ -17,10 +17,10 @@ ex:
 yum install -y  net-snmp-agent-libs boost-system boost-date-time boost-filesystem boost-thread boost-regex lz4 zlib snappy rsync expect readline ncurses nmap lsof libxml2 
 
 ## install steps
-###1、在要安装的所有主机上先做好相互的SSH免密登录
-###2、下载包到 /root目录
-###3、tar xf erydb-5.0-0.bin.tar.gz -C /usr/local
-###4、cd /usr/local/erydb && ./bin/postConofingure
+### 1、在要安装的所有主机上先做好相互的SSH免密登录
+### 2、下载包到 /root目录
+### 3、tar xf erydb-5.0-0.bin.tar.gz -C /usr/local
+### 4、cd /usr/local/erydb && ./bin/postConofingure
 
 
 <h1>交流</h1>
