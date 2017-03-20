@@ -74,6 +74,8 @@ test -f $ERYDB_INSTALL_DIR/post/functions && . $ERYDB_INSTALL_DIR/post/functions
 
 mid=`module_id`
 
+yum install -y  net-snmp-agent-libs boost-system boost-date-time boost-devel boost-filesystem boost-thread boost-regex lz4 zlib snappy rsync expect readline ncurses nmap lsof libxml2 jemalloc
+
 #if um, cloud, separate system type, external um storage, then setup mount
 if [ $module = "um" ]; then
 	if [ $cloud = "amazon-ec2" ] || [ $cloud = "amazon-vpc" ]; then
