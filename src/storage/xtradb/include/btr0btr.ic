@@ -1,7 +1,7 @@
 /*****************************************************************************
 
-Copyright (c) 1994, 2012, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2015, MariaDB Corporation.
+Copyright (c) 1994, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2016, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -60,7 +60,9 @@ btr_block_get_func(
 		NULL, BUF_GET, file, line, mtr, &err);
 
 	if (err == DB_DECRYPTION_FAILED) {
-		index->table->is_encrypted = true;
+		if (index && index->table) {
+			index->table->is_encrypted = true;
+		}
 	}
 
 	if (block) {
@@ -96,6 +98,38 @@ btr_page_set_index_id(
 		mlog_write_ull(page + (PAGE_HEADER + PAGE_INDEX_ID), id, mtr);
 	}
 }
+
+/** Gets a buffer page and declares its latching order level.
+@param space	tablespace identifier
+@param zip_size	compressed page size in bytes or 0 for uncompressed pages
+@param page_no	page number
+@param mode	latch mode
+@param idx	index tree, may be NULL if not the insert buffer tree
+@param mtr	mini-transaction handle
+@return the uncompressed page frame */
+UNIV_INLINE
+page_t*
+btr_page_get(
+/*=========*/
+	ulint		space,
+	ulint		zip_size,
+	ulint		root_page_no,
+	ulint		mode,
+	dict_index_t*	index,
+	mtr_t*		mtr)
+{
+	buf_block_t* block=NULL;
+	buf_frame_t* frame=NULL;
+
+	block = btr_block_get(space, zip_size, root_page_no, mode, index, mtr);
+
+	if (block) {
+		frame = buf_block_get_frame(block);
+	}
+
+	return ((page_t*)frame);
+}
+
 #endif /* !UNIV_HOTBACKUP */
 
 /**************************************************************//**
@@ -165,10 +199,11 @@ ulint
 btr_page_get_next(
 /*==============*/
 	const page_t*	page,	/*!< in: index page */
-	mtr_t*		mtr __attribute__((unused)))
+	mtr_t*		mtr MY_ATTRIBUTE((unused)))
 				/*!< in: mini-transaction handle */
 {
-	ut_ad(page && mtr);
+	ut_ad(page != NULL);
+	ut_ad(mtr != NULL);
 #ifndef UNIV_INNOCHECKSUM
 	ut_ad(mtr_memo_contains_page(mtr, page, MTR_MEMO_PAGE_X_FIX)
 	      || mtr_memo_contains_page(mtr, page, MTR_MEMO_PAGE_S_FIX));
@@ -188,7 +223,8 @@ btr_page_set_next(
 	ulint		next,	/*!< in: next page number */
 	mtr_t*		mtr)	/*!< in: mini-transaction handle */
 {
-	ut_ad(page && mtr);
+	ut_ad(page != NULL);
+	ut_ad(mtr != NULL);
 
 	if (page_zip) {
 		mach_write_to_4(page + FIL_PAGE_NEXT, next);
@@ -206,9 +242,10 @@ ulint
 btr_page_get_prev(
 /*==============*/
 	const page_t*	page,	/*!< in: index page */
-	mtr_t*	mtr __attribute__((unused))) /*!< in: mini-transaction handle */
+	mtr_t*	mtr MY_ATTRIBUTE((unused))) /*!< in: mini-transaction handle */
 {
-	ut_ad(page && mtr);
+	ut_ad(page != NULL);
+	ut_ad(mtr != NULL);
 
 	return(mach_read_from_4(page + FIL_PAGE_PREV));
 }
@@ -225,7 +262,8 @@ btr_page_set_prev(
 	ulint		prev,	/*!< in: previous page number */
 	mtr_t*		mtr)	/*!< in: mini-transaction handle */
 {
-	ut_ad(page && mtr);
+	ut_ad(page != NULL);
+	ut_ad(mtr != NULL);
 
 	if (page_zip) {
 		mach_write_to_4(page + FIL_PAGE_PREV, prev);

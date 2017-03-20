@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
 Copyright (c) 2013, 2016, MariaDB Corporation.
 
@@ -164,7 +164,7 @@ DEFAULT=0, ON = 1, OFF = 2
 		        + DICT_TF_WIDTH_PAGE_ENCRYPTION_KEY)
 
 /** A mask of all the known/used bits in table flags */
-#define DICT_TF_BIT_MASK	(~(~0 << DICT_TF_BITS))
+#define DICT_TF_BIT_MASK	(~(~0U << DICT_TF_BITS))
 
 /** Zero relative shift position of the COMPACT field */
 #define DICT_TF_POS_COMPACT		0
@@ -199,39 +199,39 @@ DEFAULT=0, ON = 1, OFF = 2
 
 /** Bit mask of the COMPACT field */
 #define DICT_TF_MASK_COMPACT				\
-		((~(~0 << DICT_TF_WIDTH_COMPACT))	\
+		((~(~0U << DICT_TF_WIDTH_COMPACT))	\
 		<< DICT_TF_POS_COMPACT)
 /** Bit mask of the ZIP_SSIZE field */
 #define DICT_TF_MASK_ZIP_SSIZE				\
-		((~(~0 << DICT_TF_WIDTH_ZIP_SSIZE))	\
+		((~(~0U << DICT_TF_WIDTH_ZIP_SSIZE))	\
 		<< DICT_TF_POS_ZIP_SSIZE)
 /** Bit mask of the ATOMIC_BLOBS field */
 #define DICT_TF_MASK_ATOMIC_BLOBS			\
-		((~(~0 << DICT_TF_WIDTH_ATOMIC_BLOBS))	\
+		((~(~0U << DICT_TF_WIDTH_ATOMIC_BLOBS))	\
 		<< DICT_TF_POS_ATOMIC_BLOBS)
 /** Bit mask of the DATA_DIR field */
 #define DICT_TF_MASK_DATA_DIR				\
-		((~(~0 << DICT_TF_WIDTH_DATA_DIR))	\
+		((~(~0U << DICT_TF_WIDTH_DATA_DIR))	\
 		<< DICT_TF_POS_DATA_DIR)
 /** Bit mask of the PAGE_COMPRESSION field */
 #define DICT_TF_MASK_PAGE_COMPRESSION			\
-		((~(~0 << DICT_TF_WIDTH_PAGE_COMPRESSION)) \
+		((~(~0U << DICT_TF_WIDTH_PAGE_COMPRESSION)) \
 		<< DICT_TF_POS_PAGE_COMPRESSION)
 /** Bit mask of the PAGE_COMPRESSION_LEVEL field */
 #define DICT_TF_MASK_PAGE_COMPRESSION_LEVEL		\
-		((~(~0 << DICT_TF_WIDTH_PAGE_COMPRESSION_LEVEL)) \
+		((~(~0U << DICT_TF_WIDTH_PAGE_COMPRESSION_LEVEL)) \
 		<< DICT_TF_POS_PAGE_COMPRESSION_LEVEL)
 /** Bit mask of the ATOMIC_WRITES field */
 #define DICT_TF_MASK_ATOMIC_WRITES		\
-		((~(~0 << DICT_TF_WIDTH_ATOMIC_WRITES)) \
+		((~(~0U << DICT_TF_WIDTH_ATOMIC_WRITES)) \
 		<< DICT_TF_POS_ATOMIC_WRITES)
 /** Bit mask of the PAGE_ENCRYPTION field */
 #define DICT_TF_MASK_PAGE_ENCRYPTION			\
-		((~(~0L << DICT_TF_WIDTH_PAGE_ENCRYPTION))	\
+		((~(~0U << DICT_TF_WIDTH_PAGE_ENCRYPTION))	\
 		<< DICT_TF_POS_PAGE_ENCRYPTION)
 /** Bit mask of the PAGE_ENCRYPTION_KEY field */
 #define DICT_TF_MASK_PAGE_ENCRYPTION_KEY		\
-		((~(~0L << DICT_TF_WIDTH_PAGE_ENCRYPTION_KEY)) \
+		((~(~0U << DICT_TF_WIDTH_PAGE_ENCRYPTION_KEY)) \
 		<< DICT_TF_POS_PAGE_ENCRYPTION_KEY)
 
 /** Return the value of the COMPACT field */
@@ -246,7 +246,7 @@ DEFAULT=0, ON = 1, OFF = 2
 #define DICT_TF_HAS_ATOMIC_BLOBS(flags)			\
 		((flags & DICT_TF_MASK_ATOMIC_BLOBS)	\
 		>> DICT_TF_POS_ATOMIC_BLOBS)
-/** Return the value of the ATOMIC_BLOBS field */
+/** Return the value of the DATA_DIR field */
 #define DICT_TF_HAS_DATA_DIR(flags)			\
 		((flags & DICT_TF_MASK_DATA_DIR)	\
 		>> DICT_TF_POS_DATA_DIR)
@@ -291,7 +291,7 @@ for unknown bits in order to protect backward incompatibility. */
 /* @{ */
 /** Total number of bits in table->flags2. */
 #define DICT_TF2_BITS			7
-#define DICT_TF2_BIT_MASK		~(~0 << DICT_TF2_BITS)
+#define DICT_TF2_BIT_MASK		~(~0U << DICT_TF2_BITS)
 
 /** TEMPORARY; TRUE for tables from CREATE TEMPORARY TABLE. */
 #define DICT_TF2_TEMPORARY		1
@@ -379,7 +379,7 @@ dict_mem_table_add_col(
 	ulint		mtype,	/*!< in: main datatype */
 	ulint		prtype,	/*!< in: precise type */
 	ulint		len)	/*!< in: precision */
-	__attribute__((nonnull(1)));
+	MY_ATTRIBUTE((nonnull(1)));
 /**********************************************************************//**
 Renames a column of a table in the data dictionary cache. */
 UNIV_INTERN
@@ -390,7 +390,7 @@ dict_mem_table_col_rename(
 	unsigned	nth_col,/*!< in: column index */
 	const char*	from,	/*!< in: old column name */
 	const char*	to)	/*!< in: new column name */
-	__attribute__((nonnull));
+	MY_ATTRIBUTE((nonnull));
 /**********************************************************************//**
 This function populates a dict_col_t memory structure with
 supplied information. */
@@ -1046,6 +1046,8 @@ struct dict_table_t{
 	mem_heap_t*	heap;	/*!< memory heap */
 	char*		name;	/*!< table name */
 	void*		thd;		/*!< thd */
+	bool		page_0_read; /*!< true if page 0 has
+				     been already read */
 	fil_space_crypt_t *crypt_data; /*!< crypt data if present */
 	const char*	dir_path_of_temp_table;/*!< NULL or the directory path
 				where a TEMPORARY table that was explicitly

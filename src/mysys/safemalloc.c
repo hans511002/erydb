@@ -116,7 +116,7 @@ void *sf_malloc(size_t size, myf my_flags)
 
   if (!irem)
     return 0;
-//  memset(irem, 0, sizeof(struct st_irem) + size + 4);
+
   /* we guarantee the alignment */
   compile_time_assert(sizeof(struct st_irem) % sizeof(double) == 0);
 

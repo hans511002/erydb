@@ -452,8 +452,9 @@ void read_user_name(char *name)
 
 void read_user_name(char *name)
 {
-  char *str=getenv("USER");		/* ODBC will send user variable */
-  strmake(name,str ? str : "ODBC", USERNAME_LENGTH);
+  DWORD len= USERNAME_LENGTH;
+  if (!GetUserName(name, &len))
+    strmov(name,"UNKNOWN_USER");
 }
 
 #endif
@@ -1510,9 +1511,8 @@ my_bool cli_read_prepare_result(MYSQL *mysql, MYSQL_STMT *stmt)
 */
 
 #ifdef EMBEDDED_LIBRARY
-#define STMT_INIT_PREALLOC(S) 0
-#else
-#define STMT_INIT_PREALLOC(S) S
+#undef MY_THREAD_SPECIFIC
+#define MY_THREAD_SPECIFIC 0
 #endif /*EMBEDDED_LIBRARY*/
 
 MYSQL_STMT * STDCALL
@@ -1533,10 +1533,8 @@ mysql_stmt_init(MYSQL *mysql)
     DBUG_RETURN(NULL);
   }
 
-  init_alloc_root(&stmt->mem_root, 2048, STMT_INIT_PREALLOC(2048),
-                  MYF(MY_THREAD_SPECIFIC));
-  init_alloc_root(&stmt->result.alloc, 4096, STMT_INIT_PREALLOC(4096),
-                  MYF(MY_THREAD_SPECIFIC));
+  init_alloc_root(&stmt->mem_root, 2048,2048, MYF(MY_THREAD_SPECIFIC));
+  init_alloc_root(&stmt->result.alloc, 4096, 4096, MYF(MY_THREAD_SPECIFIC));
   stmt->result.alloc.min_malloc= sizeof(MYSQL_ROWS);
   mysql->stmts= list_add(mysql->stmts, &stmt->list);
   stmt->list.data= stmt;
@@ -1552,8 +1550,6 @@ mysql_stmt_init(MYSQL *mysql)
 
   DBUG_RETURN(stmt);
 }
-
-#undef STMT_INIT_PREALLOC
 
 
 /*

@@ -1,6 +1,7 @@
 /*****************************************************************************
 
-Copyright (c) 2011, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2011, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -105,7 +106,7 @@ SELECT variable_value FROM information_schema.global_status WHERE
 variable_name = 'INNODB_BUFFER_POOL_DUMP_STATUS';
 or by:
 SHOW STATUS LIKE 'innodb_buffer_pool_dump_status'; */
-static __attribute__((nonnull, format(printf, 2, 3)))
+static MY_ATTRIBUTE((nonnull, format(printf, 2, 3)))
 void
 buf_dump_status(
 /*============*/
@@ -137,7 +138,7 @@ SELECT variable_value FROM information_schema.global_status WHERE
 variable_name = 'INNODB_BUFFER_POOL_LOAD_STATUS';
 or by:
 SHOW STATUS LIKE 'innodb_buffer_pool_load_status'; */
-static __attribute__((nonnull, format(printf, 2, 3)))
+static MY_ATTRIBUTE((nonnull, format(printf, 2, 3)))
 void
 buf_load_status(
 /*============*/
@@ -682,14 +683,9 @@ again.
 @return this function does not return, it calls os_thread_exit() */
 extern "C" UNIV_INTERN
 os_thread_ret_t
-DECLARE_THREAD(buf_dump_thread)(
-/*============================*/
-	void*	arg __attribute__((unused)))	/*!< in: a dummy parameter
-						required by os_thread_create */
+DECLARE_THREAD(buf_dump_thread)(void*)
 {
 	ut_ad(!srv_read_only_mode);
-
-	srv_buf_dump_thread_active = TRUE;
 
 	buf_dump_status(STATUS_INFO, "Dumping buffer pool(s) not yet started");
 	buf_load_status(STATUS_INFO, "Loading buffer pool(s) not yet started");
@@ -720,7 +716,7 @@ DECLARE_THREAD(buf_dump_thread)(
 		keep going even if we are in a shutdown state */);
 	}
 
-	srv_buf_dump_thread_active = FALSE;
+	srv_buf_dump_thread_active = false;
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */

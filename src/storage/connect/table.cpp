@@ -300,28 +300,28 @@ PCOL TDBASE::InsertSpcBlk(PGLOBAL g, PCOLDEF cdp)
       } // endif Pseudo
 
     if (!stricmp(name, "FILEID"))
-      colp = new(g) FERYDBLK(cp, OP_XX);
+      colp = new(g) FIDBLK(cp, OP_XX);
     else if (!stricmp(name, "FDISK"))
-      colp = new(g) FERYDBLK(cp, OP_FDISK);
+      colp = new(g) FIDBLK(cp, OP_FDISK);
     else if (!stricmp(name, "FPATH"))
-      colp = new(g) FERYDBLK(cp, OP_FPATH);
+      colp = new(g) FIDBLK(cp, OP_FPATH);
     else if (!stricmp(name, "FNAME"))
-      colp = new(g) FERYDBLK(cp, OP_FNAME);
+      colp = new(g) FIDBLK(cp, OP_FNAME);
     else if (!stricmp(name, "FTYPE"))
-      colp = new(g) FERYDBLK(cp, OP_FTYPE);
+      colp = new(g) FIDBLK(cp, OP_FTYPE);
     else
-      colp = new(g) SERYDBLK(cp);
+      colp = new(g) SIDBLK(cp);
 
   } else if (!stricmp(name, "TABID")) {
-    colp = new(g) TERYDBLK(cp);
+    colp = new(g) TIDBLK(cp);
   } else if (!stricmp(name, "PARTID")) {
     colp = new(g) PRTBLK(cp);
 //} else if (!stricmp(name, "CONID")) {
-//  colp = new(g) CERYDBLK(cp);
+//  colp = new(g) CIDBLK(cp);
   } else if (!stricmp(name, "ROWID")) {
-    colp = new(g) RERYDBLK(cp, false);
+    colp = new(g) RIDBLK(cp, false);
   } else if (!stricmp(name, "ROWNUM")) {
-      colp = new(g) RERYDBLK(cp, true);
+      colp = new(g) RIDBLK(cp, true);
   } else {
     sprintf(g->Message, MSG(BAD_SPECIAL_COL), name);
     return NULL;

@@ -101,7 +101,7 @@ extern MY_UNICASE_INFO my_unicase_unicode520;
 */
 #define MY_UCA_MAX_WEIGHT_SIZE (8+1)               /* Including 0 terminator */
 #define MY_UCA_CONTRACTION_MAX_WEIGHT_SIZE (2*8+1) /* Including 0 terminator */
-#define MY_UCA_WEIGHT_LEVELS   1
+#define MY_UCA_WEIGHT_LEVELS   2
 
 typedef struct my_contraction_t
 {
@@ -131,6 +131,7 @@ typedef struct my_uca_level_info_st
   uchar   *lengths;
   uint16  **weights;
   MY_CONTRACTIONS contractions;
+  uint    levelno;
 } MY_UCA_WEIGHT_LEVEL;
 
 
@@ -179,6 +180,9 @@ extern MY_UNI_CTYPE my_uni_ctype[256];
 #define MY_CS_TOOSMALL6 -106  /* Need at least 6 bytes: wc_mb and mb_wc */
 /* A helper macros for "need at least n bytes" */
 #define MY_CS_TOOSMALLN(n)    (-100-(n))
+
+#define MY_CS_IS_TOOSMALL(rc) ((rc) >= MY_CS_TOOSMALL6 && (rc) <= MY_CS_TOOSMALL)
+
 
 #define MY_SEQ_INTTAIL	1
 #define MY_SEQ_SPACES	2

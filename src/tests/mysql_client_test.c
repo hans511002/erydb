@@ -15375,6 +15375,9 @@ static void test_bug14169()
 
   rc= mysql_query(mysql, "drop table t1");
   myquery(rc);
+
+  rc= mysql_query(mysql, "set session group_concat_max_len=@@global.group_concat_max_len");
+  myquery(rc);
 }
 
 /*
@@ -18507,6 +18510,7 @@ static void test_bug58036()
   /* Part1: try to connect with ucs2 client character set */
   conn= mysql_client_init(NULL);
   mysql_options(conn, MYSQL_SET_CHARSET_NAME, "ucs2");
+
   if (mysql_real_connect(conn, opt_host, opt_user,
                          opt_password,  opt_db ? opt_db : "test",
                          opt_port, opt_unix_socket, 0))
@@ -18557,7 +18561,6 @@ static void test_bug58036()
     printf("Got mysql_change_user() error (expected): %s (%d)\n",
            mysql_error(conn), mysql_errno(conn));
   mysql_close(conn);
-
   DBUG_VOID_RETURN;
 }
 
@@ -19413,6 +19416,7 @@ static void test_big_packet()
                            opt_password, current_db, opt_port,
                            opt_unix_socket, 0)))
   {
+    mysql_close(mysql_local);
     fprintf(stderr, "\n connection failed(%s)", mysql_error(mysql_local));
     exit(1);
   }

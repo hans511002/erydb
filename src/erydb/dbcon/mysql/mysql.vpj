@@ -1,0 +1,434 @@
+<!DOCTYPE Project SYSTEM "http://www.slickedit.com/dtd/vse/10.0/vpj.dtd">
+<Project
+    Version="10.0"
+    VendorName="SlickEdit"
+    TemplateName="GNU C/C++"
+    WorkingDir=".">
+    <Config
+        Name="Debug"
+        Type="gnuc"
+        DebugCallbackName="gdb"
+        Version="1"
+        OutputFile="%bderymysql.so"
+        CompilerConfigName="Latest Version"
+        ObjectDir="/home/dhall/genii/dbcon/mysql/">
+        <Menu>
+            <Target
+                Name="Compile"
+                MenuCaption="&amp;Compile"
+                Dialog="_gnuc_options_form Compile"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                OutputExts="*.o"
+                SaveOption="SaveCurrent"
+                RunFromDir="%rw">
+                <Exec CmdLine='g++ -c %xup  %defd -g -o "%bd%n%oe" %i "%f"'/>
+            </Target>
+            <Target
+                Name="Link"
+                MenuCaption="&amp;Link"
+                ShowOnMenu="Never"
+                Dialog="_gnuc_options_form Link"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveCurrent"
+                RunFromDir="%rw">
+                <Exec CmdLine='g++ %xup -g -o "%o" %f %libs -shared -fPIC'/>
+            </Target>
+            <Target
+                Name="Build"
+                MenuCaption="&amp;Build"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw"
+                ClearProcessBuffer="1">
+                <Exec CmdLine="make install"/>
+            </Target>
+            <Target
+                Name="Rebuild"
+                MenuCaption="&amp;Rebuild"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="Debug"
+                MenuCaption="&amp;Debug"
+                Dialog="_gnuc_options_form Run/Debug"
+                BuildFirst="1"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveNone"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="Execute"
+                MenuCaption="E&amp;xecute"
+                Dialog="_gnuc_options_form Run/Debug"
+                BuildFirst="1"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="dash"
+                MenuCaption="-"
+                Deletable="0">
+                <Exec/>
+            </Target>
+            <Target
+                Name="GNU C Options"
+                MenuCaption="GNU C &amp;Options..."
+                ShowOnMenu="HideIfNoCmdLine"
+                Deletable="0"
+                SaveOption="SaveNone">
+                <Exec
+                    CmdLine="gnucoptions"
+                    Type="Slick-C"/>
+            </Target>
+        </Menu>
+        <List Name="GNUC Options">
+            <Item
+                Name="LinkerOutputType"
+                Value="SharedLibrary"/>
+        </List>
+    </Config>
+    <Config
+        Name="Release"
+        Type="gnuc"
+        DebugCallbackName="gdb"
+        Version="1"
+        OutputFile="%bderymysql.so"
+        CompilerConfigName="Latest Version">
+        <Menu>
+            <Target
+                Name="Compile"
+                MenuCaption="&amp;Compile"
+                Dialog="_gnuc_options_form Compile"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                OutputExts="*.o"
+                SaveOption="SaveCurrent"
+                RunFromDir="%rw">
+                <Exec CmdLine='g++ -c %xup %defd -o "%bd%n%oe" %i "%f"'/>
+            </Target>
+            <Target
+                Name="Link"
+                MenuCaption="&amp;Link"
+                ShowOnMenu="Never"
+                Dialog="_gnuc_options_form Link"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveCurrent"
+                RunFromDir="%rw">
+                <Exec CmdLine='g++ %xup -o "%o" %f %libs -shared -fPIC'/>
+            </Target>
+            <Target
+                Name="Build"
+                MenuCaption="&amp;Build"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw"
+                ClearProcessBuffer="1">
+                <Exec CmdLine="make install"/>
+            </Target>
+            <Target
+                Name="Rebuild"
+                MenuCaption="&amp;Rebuild"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="Debug"
+                MenuCaption="&amp;Debug"
+                Dialog="_gnuc_options_form Run/Debug"
+                BuildFirst="1"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveNone"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="Execute"
+                MenuCaption="E&amp;xecute"
+                Dialog="_gnuc_options_form Run/Debug"
+                BuildFirst="1"
+                CaptureOutputWith="ProcessBuffer"
+                Deletable="0"
+                SaveOption="SaveWorkspaceFiles"
+                RunFromDir="%rw">
+                <Exec CmdLine=""/>
+            </Target>
+            <Target
+                Name="dash"
+                MenuCaption="-"
+                Deletable="0">
+                <Exec/>
+            </Target>
+            <Target
+                Name="GNU C Options"
+                MenuCaption="GNU C &amp;Options..."
+                ShowOnMenu="HideIfNoCmdLine"
+                Deletable="0"
+                SaveOption="SaveNone">
+                <Exec
+                    CmdLine="gnucoptions"
+                    Type="Slick-C"/>
+            </Target>
+        </Menu>
+        <List Name="GNUC Options">
+            <Item
+                Name="LinkerOutputType"
+                Value="SharedLibrary"/>
+        </List>
+    </Config>
+    <Files>
+        <Folder
+            Name="Source Files"
+            Filters="*.c;*.C;*.cc;*.cpp;*.cp;*.cxx;*.c++;*.prg;*.pas;*.dpr;*.asm;*.s;*.bas;*.java;*.cs;*.sc;*.e;*.cob;*.html;*.rc;*.tcl;*.py;*.pl;*.d">
+            <F N="ha_autoi.cpp"/>
+            <F N="ha_erydb.cpp"/>
+            <F N="ha_erydb_ddl.cpp"/>
+            <F N="ha_erydb_dml.cpp"/>
+            <F N="ha_erydb_execplan.cpp"/>
+            <F N="ha_erydb_impl.cpp"/>
+            <F N="ha_erydb_partition.cpp"/>
+            <F N="ha_erydb_udf.cpp"/>
+            <F N="ha_exists_sub.cpp"/>
+            <F N="ha_from_sub.cpp"/>
+            <F N="ha_in_sub.cpp"/>
+            <F N="ha_pseudocolumn.cpp"/>
+            <F N="ha_scalar_sub.cpp"/>
+            <F N="ha_select_sub.cpp"/>
+            <F N="ha_view.cpp"/>
+            <F N="ha_window_function.cpp"/>
+            <F N="sm.cpp"/>
+        </Folder>
+        <Folder
+            Name="Header Files"
+            Filters="*.h;*.H;*.hh;*.hpp;*.hxx;*.inc;*.sh;*.cpy;*.if">
+            <F N="../../../erydb/sql/authors.h"/>
+            <F N="../../../erydb/sql/bounded_queue.h"/>
+            <F N="../../../erydb/sql/client_settings.h"/>
+            <F N="../../../erydb/sql/compat56.h"/>
+            <F N="../../../erydb/sql/contributors.h"/>
+            <F N="../../../erydb/sql/create_options.h"/>
+            <F N="../../../erydb/sql/custom_conf.h"/>
+            <F N="../../../erydb/sql/datadict.h"/>
+            <F N="../../../erydb/sql/debug_sync.h"/>
+            <F N="../../../erydb/sql/derror.h"/>
+            <F N="../../../erydb/sql/des_key_file.h"/>
+            <F N="../../../erydb/sql/discover.h"/>
+            <F N="../../../erydb/sql/errorids.h"/>
+            <F N="../../../erydb/sql/event_data_objects.h"/>
+            <F N="../../../erydb/sql/event_db_repository.h"/>
+            <F N="../../../erydb/sql/event_parse_data.h"/>
+            <F N="../../../erydb/sql/event_queue.h"/>
+            <F N="../../../erydb/sql/event_scheduler.h"/>
+            <F N="../../../erydb/sql/events.h"/>
+            <F N="../../../erydb/sql/field.h"/>
+            <F N="../../../erydb/sql/filesort.h"/>
+            <F N="../../../erydb/sql/filesort_utils.h"/>
+            <F N="../../../erydb/sql/gcalc_slicescan.h"/>
+            <F N="../../../erydb/sql/gcalc_tools.h"/>
+            <F N="../../../erydb/sql/group_by_handler.h"/>
+            <F N="../../../erydb/sql/gstream.h"/>
+            <F N="ha_erydb.h"/>
+            <F N="ha_erydb_impl.h"/>
+            <F N="ha_erydb_impl_if.h"/>
+            <F N="../../../erydb/sql/ha_partition.h"/>
+            <F N="ha_subquery.h"/>
+            <F N="ha_view.h"/>
+            <F N="../../../erydb/sql/handler.h"/>
+            <F N="../../../erydb/sql/hash_filo.h"/>
+            <F N="../../../erydb/sql/hostname.h"/>
+            <F N="erydb_mysql.h"/>
+            <F N="../../../erydb/sql/init.h"/>
+            <F N="../../../erydb/sql/innodb_priv.h"/>
+            <F N="../../../erydb/sql/item.h"/>
+            <F N="../../../erydb/sql/item_cmpfunc.h"/>
+            <F N="../../../erydb/sql/item_create.h"/>
+            <F N="../../../erydb/sql/item_create_window_function.h"/>
+            <F N="../../../erydb/sql/item_func.h"/>
+            <F N="../../../erydb/sql/item_geofunc.h"/>
+            <F N="../../../erydb/sql/item_inetfunc.h"/>
+            <F N="../../../erydb/sql/item_row.h"/>
+            <F N="../../../erydb/sql/item_strfunc.h"/>
+            <F N="../../../erydb/sql/item_subselect.h"/>
+            <F N="../../../erydb/sql/item_sum.h"/>
+            <F N="../../../erydb/sql/item_timefunc.h"/>
+            <F N="../../../erydb/sql/item_window_function.h"/>
+            <F N="../../../erydb/sql/item_xmlfunc.h"/>
+            <F N="../../../erydb/sql/key.h"/>
+            <F N="../../../erydb/sql/keycaches.h"/>
+            <F N="../../../erydb/sql/lex.h"/>
+            <F N="../../../erydb/sql/lex_hash.h"/>
+            <F N="../../../erydb/sql/lex_symbol.h"/>
+            <F N="../../../erydb/sql/lex_token.h"/>
+            <F N="../../../erydb/sql/lock.h"/>
+            <F N="../../../erydb/sql/log.h"/>
+            <F N="../../../erydb/sql/log_event.h"/>
+            <F N="../../../erydb/sql/log_event_old.h"/>
+            <F N="../../../erydb/sql/log_slow.h"/>
+            <F N="../../../erydb/sql/mdl.h"/>
+            <F N="../../../erydb/sql/mem_root_array.h"/>
+            <F N="../../../erydb/sql/message.h"/>
+            <F N="../../../erydb/sql/multi_range_read.h"/>
+            <F N="../../../erydb/sql/my_apc.h"/>
+            <F N="../../../erydb/sql/my_decimal.h"/>
+            <F N="../../../erydb/sql/my_json_writer.h"/>
+            <F N="../../../erydb/sql/mysqld.h"/>
+            <F N="../../../erydb/sql/mysqld_suffix.h"/>
+            <F N="../../../erydb/sql/nt_servc.h"/>
+            <F N="../../../erydb/sql/opt_range.h"/>
+            <F N="../../../erydb/sql/opt_subselect.h"/>
+            <F N="../../../erydb/sql/parse_file.h"/>
+            <F N="../../../erydb/sql/partition_element.h"/>
+            <F N="../../../erydb/sql/partition_info.h"/>
+            <F N="../../../erydb/sql/procedure.h"/>
+            <F N="../../../erydb/sql/protocol.h"/>
+            <F N="../../../erydb/sql/records.h"/>
+            <F N="../../../erydb/sql/repl_failsafe.h"/>
+            <F N="../../../erydb/sql/replication.h"/>
+            <F N="../../../erydb/sql/rpl_constants.h"/>
+            <F N="../../../erydb/sql/rpl_filter.h"/>
+            <F N="../../../erydb/sql/rpl_gtid.h"/>
+            <F N="../../../erydb/sql/rpl_handler.h"/>
+            <F N="../../../erydb/sql/rpl_injector.h"/>
+            <F N="../../../erydb/sql/rpl_mi.h"/>
+            <F N="../../../erydb/sql/rpl_parallel.h"/>
+            <F N="../../../erydb/sql/rpl_record.h"/>
+            <F N="../../../erydb/sql/rpl_record_old.h"/>
+            <F N="../../../erydb/sql/rpl_reporting.h"/>
+            <F N="../../../erydb/sql/rpl_rli.h"/>
+            <F N="../../../erydb/sql/rpl_tblmap.h"/>
+            <F N="../../../erydb/sql/rpl_utility.h"/>
+            <F N="../../../erydb/sql/scheduler.h"/>
+            <F N="../../../erydb/sql/set_var.h"/>
+            <F N="../../../erydb/sql/slave.h"/>
+            <F N="sm.h"/>
+            <F N="../../../erydb/sql/sp.h"/>
+            <F N="../../../erydb/sql/sp_cache.h"/>
+            <F N="../../../erydb/sql/sp_head.h"/>
+            <F N="../../../erydb/sql/sp_pcontext.h"/>
+            <F N="../../../erydb/sql/sp_rcontext.h"/>
+            <F N="../../../erydb/sql/spatial.h"/>
+            <F N="../../../erydb/sql/sql_acl.h"/>
+            <F N="../../../erydb/sql/sql_admin.h"/>
+            <F N="../../../erydb/sql/sql_alter.h"/>
+            <F N="../../../erydb/sql/sql_analyse.h"/>
+            <F N="../../../erydb/sql/sql_analyze_stmt.h"/>
+            <F N="../../../erydb/sql/sql_array.h"/>
+            <F N="../../../erydb/sql/sql_audit.h"/>
+            <F N="../../../erydb/sql/sql_base.h"/>
+            <F N="../../../erydb/sql/sql_binlog.h"/>
+            <F N="../../../erydb/sql/sql_bitmap.h"/>
+            <F N="../../../erydb/sql/sql_bootstrap.h"/>
+            <F N="../../../erydb/sql/sql_cache.h"/>
+            <F N="../../../erydb/sql/sql_callback.h"/>
+            <F N="../../../erydb/sql/sql_class.h"/>
+            <F N="../../../erydb/sql/sql_cmd.h"/>
+            <F N="../../../erydb/sql/sql_connect.h"/>
+            <F N="../../../erydb/sql/sql_const.h"/>
+            <F N="../../../erydb/sql/sql_crypt.h"/>
+            <F N="../../../erydb/sql/sql_cursor.h"/>
+            <F N="../../../erydb/sql/sql_db.h"/>
+            <F N="../../../erydb/sql/sql_delete.h"/>
+            <F N="../../../erydb/sql/sql_derived.h"/>
+            <F N="../../../erydb/sql/sql_digest.h"/>
+            <F N="../../../erydb/sql/sql_digest_stream.h"/>
+            <F N="../../../erydb/sql/sql_do.h"/>
+            <F N="../../../erydb/sql/sql_error.h"/>
+            <F N="../../../erydb/sql/sql_explain.h"/>
+            <F N="../../../erydb/sql/sql_expression_cache.h"/>
+            <F N="../../../erydb/sql/sql_get_diagnostics.h"/>
+            <F N="../../../erydb/sql/sql_handler.h"/>
+            <F N="../../../erydb/sql/sql_help.h"/>
+            <F N="../../../erydb/sql/sql_hset.h"/>
+            <F N="../../../erydb/sql/sql_insert.h"/>
+            <F N="../../../erydb/sql/sql_join_cache.h"/>
+            <F N="../../../erydb/sql/sql_lex.h"/>
+            <F N="../../../erydb/sql/sql_lifo_buffer.h"/>
+            <F N="../../../erydb/sql/sql_list.h"/>
+            <F N="../../../erydb/sql/sql_load.h"/>
+            <F N="../../../erydb/sql/sql_locale.h"/>
+            <F N="../../../erydb/sql/sql_manager.h"/>
+            <F N="../../../erydb/sql/sql_parse.h"/>
+            <F N="../../../erydb/sql/sql_partition.h"/>
+            <F N="../../../erydb/sql/sql_partition_admin.h"/>
+            <F N="../../../erydb/sql/sql_plist.h"/>
+            <F N="../../../erydb/sql/sql_plugin.h"/>
+            <F N="../../../erydb/sql/sql_plugin_compat.h"/>
+            <F N="../../../erydb/sql/sql_prepare.h"/>
+            <F N="../../../erydb/sql/sql_priv.h"/>
+            <F N="../../../erydb/sql/sql_profile.h"/>
+            <F N="../../../erydb/sql/sql_reload.h"/>
+            <F N="../../../erydb/sql/sql_rename.h"/>
+            <F N="../../../erydb/sql/sql_repl.h"/>
+            <F N="../../../erydb/sql/sql_select.h"/>
+            <F N="../../../erydb/sql/sql_servers.h"/>
+            <F N="../../../erydb/sql/sql_show.h"/>
+            <F N="../../../erydb/sql/sql_signal.h"/>
+            <F N="../../../erydb/sql/sql_sort.h"/>
+            <F N="../../../erydb/sql/sql_statistics.h"/>
+            <F N="../../../erydb/sql/sql_string.h"/>
+            <F N="../../../erydb/sql/sql_table.h"/>
+            <F N="../../../erydb/sql/sql_tablespace.h"/>
+            <F N="../../../erydb/sql/sql_test.h"/>
+            <F N="../../../erydb/sql/sql_time.h"/>
+            <F N="../../../erydb/sql/sql_trigger.h"/>
+            <F N="../../../erydb/sql/sql_truncate.h"/>
+            <F N="../../../erydb/sql/sql_type.h"/>
+            <F N="../../../erydb/sql/sql_udf.h"/>
+            <F N="../../../erydb/sql/sql_union.h"/>
+            <F N="../../../erydb/sql/sql_update.h"/>
+            <F N="../../../erydb/sql/sql_view.h"/>
+            <F N="../../../erydb/sql/sql_yacc.h"/>
+            <F N="../../../erydb/sql/strfunc.h"/>
+            <F N="../../../erydb/sql/structs.h"/>
+            <F N="../../../erydb/sql/sys_vars_shared.h"/>
+            <F N="../../../erydb/sql/table.h"/>
+            <F N="../../../erydb/sql/table_cache.h"/>
+            <F N="../../../erydb/sql/thr_malloc.h"/>
+            <F N="../../../erydb/sql/threadpool.h"/>
+            <F N="../../../erydb/sql/transaction.h"/>
+            <F N="../../../erydb/sql/tzfile.h"/>
+            <F N="../../../erydb/sql/tztime.h"/>
+            <F N="../../../erydb/sql/unireg.h"/>
+            <F N="../../../erydb/sql/winservice.h"/>
+            <F N="../../../erydb/sql/wsrep_applier.h"/>
+            <F N="../../../erydb/sql/wsrep_binlog.h"/>
+            <F N="../../../erydb/sql/wsrep_mysqld.h"/>
+            <F N="../../../erydb/sql/wsrep_priv.h"/>
+            <F N="../../../erydb/sql/wsrep_sst.h"/>
+            <F N="../../../erydb/sql/wsrep_thd.h"/>
+            <F N="../../../erydb/sql/wsrep_utils.h"/>
+            <F N="../../../erydb/sql/wsrep_var.h"/>
+            <F N="../../../erydb/sql/wsrep_xid.h"/>
+        </Folder>
+        <Folder
+            Name="Resource Files"
+            Filters="*.ico;*.cur;*.dlg"/>
+        <Folder
+            Name="Bitmaps"
+            Filters="*.bmp"/>
+        <Folder
+            Name="Other Files"
+            Filters="">
+            <F
+                N="Makefile"
+                Type="Makefile"/>
+        </Folder>
+    </Files>
+</Project>

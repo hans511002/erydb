@@ -336,7 +336,8 @@ select * from t1;
 delete from t1;
 create trigger t1_bi before insert on t1 for each row begin end;
 insert t1 values (0);
-select * from t1;
+--error ER_DUP_ENTRY
+insert t1 (id) values (0);
 drop table t1;
 
 #
@@ -371,4 +372,18 @@ create trigger t1bu before update on t1 for each row begin end;
 show columns from t1;
 insert into t1 (a) values (3);
 show columns from t1;
+drop table t1;
+
+#
+# MDEV-11551 Server crashes in Field::is_real_null
+#
+create table t1 (
+  pk int primary key,
+  i int,
+  v1 int as (i) virtual,
+  v2 int as (i) virtual
+);
+create trigger tr before update on t1 for each row set @a = 1;
+--error ER_BAD_NULL_ERROR
+insert into t1 (pk, i) values (null, null);
 drop table t1;

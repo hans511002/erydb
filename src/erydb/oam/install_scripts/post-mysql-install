@@ -1,0 +1,163 @@
+#!/bin/bash
+#
+# $Id: post-mysql-install 3661 2013-06-25 22:04:33Z dhill $
+#
+# Post-install steps for erydb-mysql install
+
+# check log for error
+checkForError() {
+	# check for password error
+	grep "ERROR 1045" /tmp/mysql_install.log > /tmp/error.check
+	if [ `cat /tmp/error.check | wc -c` -ne 0 ]; then
+		if test -f $HOME/.my.cnf ; then
+			password=`cat $HOME/.my.cnf | grep password | awk '{gsub(/^[ \t]+|[ \t]+$/,"");print $3}'`
+                	if [ ! -z $password ]; then
+                        	pwprompt="-p$password"
+				return 1;
+ 			else
+	                        echo "MySQL Password file missing or incorrect, check .my.cnf file"
+	                        rm -f /tmp/error.check
+	                        $installdir/mysql/mysql-erydb stop
+	                        sleep 2
+	                        exit 2;
+			fi
+		else
+			echo "MySQL Password file missing or incorrect, check .my.cnf file"
+			rm -f /tmp/error.check
+			$installdir/mysql/mysql-erydb stop
+			sleep 2
+			exit 2;
+		fi
+	fi
+
+	rm -f /tmp/error.check
+
+        #---------------------------------------------------------------------------
+        # See if engine erydb exist
+        #---------------------------------------------------------------------------
+        echo "checking for engine erydb..."
+        $installdir/mysql/bin/mysql \
+                --defaults-file=$installdir/mysql/my.cnf \
+                --user=root $pwprompt \
+                --execute='show engines;' \
+                erydbsys | grep -i erydb
+
+        #
+        # Add compressiontype column to SYSCOLUMN if applicable
+        #
+        if [ $? -ne 0 ]; then
+                echo "erydb doesn\'t exist"
+                exit 1
+        fi
+
+        echo "erydb exist"
+
+	return 0;
+}
+
+prefix=/usr/local
+installdir=$prefix/erydb
+rpmmode=install
+password=
+pwprompt=
+for arg in "$@"; do
+	if [ $(expr -- "$arg" : '--prefix=') -eq 9 ]; then
+		prefix="$(echo $arg | awk -F= '{print $2}')"
+		installdir=$prefix/erydb
+	elif [ $(expr -- "$arg" : '--rpmmode=') -eq 10 ]; then
+		rpmmode="$(echo $arg | awk -F= '{print $2}')"
+	elif [ $(expr -- "$arg" : '--password=') -eq 11 ]; then
+		password="$(echo $arg | awk -F= '{print $2}')"
+		if [ ! -z $password ]; then
+			pwprompt="-p$password"
+		fi
+	elif [ $(expr -- "$arg" : '--installdir=') -eq 13 ]; then
+		installdir="$(echo $arg | awk -F= '{print $2}')"
+		prefix=$(dirname $installdir)
+	else
+		echo "ignoring unknown argument: $arg" 1>&2
+	fi
+done
+
+
+rm -rf /etc/my.cnf && ln -sf $installdir/mysql/my.cnf /etc/my.cnf 
+logError=`cat /etc/my.cnf |grep "log-error"|awk -F= '{print $2}'`
+if [ "$logError" != "" ] ; then
+	logError=`dirname "$logError"`
+	mkdir -p $logError
+else
+   mkdir -p /var/log/mariadb
+   logError=/var/log/mariadb
+fi
+pidFile=`cat /etc/my.cnf |grep "pid-file"|awk -F= '{print $2}'`
+if [ "$pidFile" != "" ] ; then
+	pidFile=`dirname "$pidFile"`
+	mkdir -p $pidFile
+else
+   mkdir -p /var/run/mariadb
+   pidFile=/var/run/mariadb
+fi
+echo "chmod 1777 $pidFile $logError"
+chmod 1777 $pidFile $logError
+
+#run to make sure library paths are setup
+sudo ldconfig
+
+if [ $installdir != "/usr/local/erydb" ]; then
+	export ERYDB_INSTALL_DIR=$installdir
+	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ERYDB_INSTALL_DIR/lib:$ERYDB_INSTALL_DIR/mysql/lib/plugin
+fi
+
+if [ -f $installdir/lib/liberymysql.so.1.0.0 ]; then
+	liberymysql=$installdir/lib/liberymysql.so.1.0.0
+	libudfsdk=$installdir/lib/libudfsdk.so.1.0.0
+	libudfmysql=$installdir/lib/libudf_mysql.so.1.0.0
+elif [ -f $installdir/lib/liberymysql.so.1 ]; then
+	liberymysql=$installdir/lib/liberymysql.so.1
+	libudfsdk=$installdir/lib/libudfsdk.so.1
+	libudfmysql=$installdir/lib/libudf_mysql.so.1
+else
+	liberymysql=
+fi
+
+if [ -d $installdir/mysql/lib/mysql/plugin -a -n "$liberymysql" ]; then
+	cd $installdir/mysql/lib/mysql/plugin
+	ln -sf $liberymysql liberymysql.so
+        ln -sf $liberymysql liberymysqlent.so
+	ln -sf $libudfsdk libudfsdk.so
+	ln -sf $libudfmysql libudf_mysql.so
+fi
+
+if [ $installdir != "/usr/local/erydb" ]; then
+	sed -i -e s@/usr/local/erydb@$installdir@g $installdir/mysql/my.cnf
+fi
+
+if [ -x $installdir/mysql/mysql-erydb ]; then
+
+	# Restart in the same way that mysqld will be started normally.
+	$installdir/mysql/mysql-erydb stop >/dev/null 2>&1
+	sleep 2
+	$installdir/mysql/mysql-erydb start
+
+	sleep 5
+
+	# Install various erydb stuff...
+	$installdir/mysql/install_erydb_mysql.sh --password=$password --installdir=$installdir
+	checkForError
+	if [ $? -ne 0 ]; then
+	# retry
+		$installdir/mysql/install_erydb_mysql.sh --password=$password --installdir=$installdir
+		checkForError
+		if [ $? -ne 0 ]; then
+			echo "ERROR: Invalid password in .my.cnf, or Erydb plugin install missing"
+			$installdir/mysql/mysql-erydb stop
+			sleep 2
+			exit 2;
+		fi
+	fi
+
+	$installdir/mysql/mysql-erydb stop
+fi
+
+exit 0
+

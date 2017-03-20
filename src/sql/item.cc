@@ -57,6 +57,17 @@ bool cmp_items(Item *a, Item *b)
 }
 
 
+/**
+  Set max_sum_func_level if it is needed
+*/
+inline void set_max_sum_func_level(THD *thd, SELECT_LEX *select)
+{
+  if (thd->lex->in_sum_func &&
+      thd->lex->in_sum_func->nest_level >= select->nest_level)
+    set_if_bigger(thd->lex->in_sum_func->max_sum_func_level,
+                  select->nest_level - 1);
+}
+
 /*****************************************************************************
 ** Item functions
 *****************************************************************************/
@@ -186,9 +197,6 @@ bool Item::get_time_with_conversion(THD *thd, MYSQL_TIME *ltime,
 */
 String *Item::val_str_ascii(String *str)
 {
-  if (!(collation.collation->state & MY_CS_NONASCII))
-    return val_str(str);
-  
   DBUG_ASSERT(str != &str_value);
   
   uint errors;
@@ -196,11 +204,15 @@ String *Item::val_str_ascii(String *str)
   if (!res)
     return 0;
   
-  if ((null_value= str->copy(res->ptr(), res->length(),
-                             collation.collation, &my_charset_latin1,
-                             &errors)))
-    return 0;
-  
+  if (!(res->charset()->state & MY_CS_NONASCII))
+    str= res;
+  else
+  {
+    if ((null_value= str->copy(res->ptr(), res->length(), collation.collation,
+                               &my_charset_latin1, &errors)))
+      return 0;
+  }
+
   return str;
 }
 
@@ -523,7 +535,14 @@ uint Item::decimal_precision() const
                                      unsigned_flag);
     return MY_MIN(prec, DECIMAL_MAX_PRECISION);
   }
-  return MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  uint res= max_char_length();
+  /*
+    Return at least one decimal digit, even if Item::max_char_length()
+    returned  0. This is important to avoid attempts to create fields of types
+    INT(0) or DECIMAL(0,0) when converting NULL or empty strings to INT/DECIMAL:
+      CREATE TABLE t1 AS SELECT CONVERT(NULL,SIGNED) AS a;
+  */
+  return res ? MY_MIN(res, DECIMAL_MAX_PRECISION) : 1;
 }
 
 
@@ -1116,7 +1135,8 @@ Item *Item_cache::safe_charset_converter(THD *thd, CHARSET_INFO *tocs)
   if (conv == example)
     return this;
   Item_cache *cache;
-  if (!conv || !(cache= new (thd->mem_root) Item_cache_str(thd, conv)))
+  if (!conv || conv->fix_fields(thd, (Item **) NULL) ||
+      !(cache= new (thd->mem_root) Item_cache_str(thd, conv)))
     return NULL; // Safe conversion is not possible, or OEM
   cache->setup(thd, conv);
   cache->fixed= false; // Make Item::fix_fields() happy
@@ -2709,10 +2729,67 @@ void Item_field::fix_after_pullout(st_select_lex *new_parent, Item **ref)
     depended_from= NULL;
   if (context)
   {
+    bool need_change= false;
+    /*
+      Suppose there are nested selects:
+
+       select_id=1
+         select_id=2
+           select_id=3  <----+
+             select_id=4    -+
+               select_id=5 --+
+
+      Suppose, pullout operation has moved anything that had select_id=4 or 5
+      in to select_id=3.
+
+      If this Item_field had a name resolution context pointing into select_lex
+      with id=4 or id=5, it needs a new name resolution context.
+
+      However, it could also be that this object is a part of outer reference:
+      Item_ref(Item_field(field in select with select_id=1))).
+      - The Item_ref object has a context with select_id=5, and so needs a new
+        name resolution context.
+      - The Item_field object has a context with select_id=1, and doesn't need
+        a new name resolution context.
+
+      So, the following loop walks from Item_field's current context upwards.
+      If we find that the select we've been pulled out to is up there, we
+      create the new name resolution context. Otherwise, we don't.
+    */
+    for (Name_resolution_context *ct= context; ct; ct= ct->outer_context)
+    {
+      if (new_parent == ct->select_lex)
+      {
+        need_change= true;
+        break;
+      }
+    }
+    if (!need_change)
+      return;
+
     Name_resolution_context *ctx= new Name_resolution_context();
-    ctx->outer_context= NULL; // We don't build a complete name resolver
-    ctx->table_list= NULL;    // We rely on first_name_resolution_table instead
+    if (context->select_lex == new_parent)
+    {
+      /*
+        This field was pushed in then pulled out
+        (for example left part of IN)
+      */
+      ctx->outer_context= context->outer_context;
+    }
+    else if (context->outer_context)
+    {
+      /* just pull to the upper context */
+      ctx->outer_context= context->outer_context->outer_context;
+    }
+    else
+    {
+      /* No upper context (merging Derived/VIEW where context chain ends) */
+      ctx->outer_context= NULL;
+    }
+    ctx->table_list= context->first_name_resolution_table;
     ctx->select_lex= new_parent;
+    if (context->select_lex == NULL)
+      ctx->select_lex= NULL;
     ctx->first_name_resolution_table= context->first_name_resolution_table;
     ctx->last_name_resolution_table=  context->last_name_resolution_table;
     ctx->error_processor=             context->error_processor;
@@ -4399,8 +4476,6 @@ static Item** find_field_in_group_list(Item *find_item, ORDER *group_list)
   const char *field_name;
   ORDER      *found_group= NULL;
   int         found_match_degree= 0;
-  Item_ident *cur_field;
-  int         cur_match_degree= 0;
   char        name_buff[SAFE_NAME_LEN+1];
 
   if (find_item->type() == Item::FIELD_ITEM ||
@@ -4425,54 +4500,70 @@ static Item** find_field_in_group_list(Item *find_item, ORDER *group_list)
 
   for (ORDER *cur_group= group_list ; cur_group ; cur_group= cur_group->next)
   {
-    if ((*(cur_group->item))->real_item()->type() == Item::FIELD_ITEM)
+    int cur_match_degree= 0;
+
+    /* SELECT list element with explicit alias */
+    if ((*(cur_group->item))->name &&
+        !(*(cur_group->item))->is_autogenerated_name &&
+        !my_strcasecmp(system_charset_info,
+                       (*(cur_group->item))->name, field_name))
     {
-      cur_field= (Item_ident*) *cur_group->item;
-      cur_match_degree= 0;
-      
-      DBUG_ASSERT(cur_field->field_name != 0);
+      ++cur_match_degree;
+    }
+    /* Reference on the field or view/derived field. */
+    else if ((*(cur_group->item))->type() == Item::FIELD_ITEM ||
+             (*(cur_group->item))->type() == Item::REF_ITEM )
+    {
+      Item_ident *cur_field= (Item_ident*) *cur_group->item;
+      const char *l_db_name= cur_field->db_name;
+      const char *l_table_name= cur_field->table_name;
+      const char *l_field_name= cur_field->field_name;
+
+      DBUG_ASSERT(l_field_name != 0);
 
       if (!my_strcasecmp(system_charset_info,
-                         cur_field->field_name, field_name))
+                         l_field_name, field_name))
         ++cur_match_degree;
       else
         continue;
 
-      if (cur_field->table_name && table_name)
+      if (l_table_name && table_name)
       {
         /* If field_name is qualified by a table name. */
-        if (my_strcasecmp(table_alias_charset, cur_field->table_name, table_name))
+        if (my_strcasecmp(table_alias_charset, l_table_name, table_name))
           /* Same field names, different tables. */
           return NULL;
 
         ++cur_match_degree;
-        if (cur_field->db_name && db_name)
+        if (l_db_name && db_name)
         {
           /* If field_name is also qualified by a database name. */
-          if (strcmp(cur_field->db_name, db_name))
+          if (strcmp(l_db_name, db_name))
             /* Same field names, different databases. */
             return NULL;
           ++cur_match_degree;
         }
       }
+    }
+    else
+      continue;
 
-      if (cur_match_degree > found_match_degree)
-      {
-        found_match_degree= cur_match_degree;
-        found_group= cur_group;
-      }
-      else if (found_group && (cur_match_degree == found_match_degree) &&
-               ! (*(found_group->item))->eq(cur_field, 0))
-      {
-        /*
-          If the current resolve candidate matches equally well as the current
-          best match, they must reference the same column, otherwise the field
-          is ambiguous.
-        */
-        my_error(ER_NON_UNIQ_ERROR, MYF(0),
-                 find_item->full_name(), current_thd->where);
-        return NULL;
-      }
+    if (cur_match_degree > found_match_degree)
+    {
+      found_match_degree= cur_match_degree;
+      found_group= cur_group;
+    }
+    else if (found_group && (cur_match_degree == found_match_degree) &&
+             !(*(found_group->item))->eq((*(cur_group->item)), 0))
+    {
+      /*
+        If the current resolve candidate matches equally well as the current
+        best match, they must reference the same column, otherwise the field
+        is ambiguous.
+      */
+      my_error(ER_NON_UNIQ_ERROR, MYF(0),
+               find_item->full_name(), current_thd->where);
+      return NULL;
     }
   }
 
@@ -4933,6 +5024,11 @@ Item_field::fix_outer_field(THD *thd, Field **from_field, Item **reference)
     if (rf->fix_fields(thd, reference) || rf->check_cols(1))
       return -1;
 
+    /*
+      We can not "move" aggregate function in the place where
+      its arguments are not defined.
+    */
+    set_max_sum_func_level(thd, select);
     mark_as_dependent(thd, last_checked_context->select_lex,
                       context->select_lex, rf,
                       rf);
@@ -4941,6 +5037,11 @@ Item_field::fix_outer_field(THD *thd, Field **from_field, Item **reference)
   }
   else
   {
+    /*
+      We can not "move" aggregate function in the place where
+      its arguments are not defined.
+    */
+    set_max_sum_func_level(thd, select);
     mark_as_dependent(thd, last_checked_context->select_lex,
                       context->select_lex,
                       this, (Item_ident*)*reference);
@@ -5075,6 +5176,11 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
               return(1);
             }
 
+            /*
+              We can not "move" aggregate function in the place where
+              its arguments are not defined.
+            */
+            set_max_sum_func_level(thd, thd->lex->current_select);
             set_field(new_field);
             return 0;
           }
@@ -5099,6 +5205,11 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
                                   select->parsing_place == IN_GROUP_BY && 
 				  alias_name_used  ?  *rf->ref : rf);
 
+            /*
+              We can not "move" aggregate function in the place where
+              its arguments are not defined.
+            */
+            set_max_sum_func_level(thd, thd->lex->current_select);
             return FALSE;
           }
         }
@@ -5510,6 +5621,7 @@ String *Item::check_well_formed_result(String *str, bool send_error)
   /* Check whether we got a well-formed string */
   CHARSET_INFO *cs= str->charset();
   uint wlen= str->well_formed_length();
+  null_value= false;
   if (wlen < str->length())
   {
     THD *thd= current_thd;
@@ -9884,4 +9996,3 @@ const char *dbug_print_item(Item *item)
 }
 
 #endif /*DBUG_OFF*/
-

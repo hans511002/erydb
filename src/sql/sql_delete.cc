@@ -28,7 +28,6 @@ Copyright (c) 2016, MariaDB Corporation
 #include "sql_delete.h"
 #include "sql_cache.h"                          // query_cache_*
 #include "sql_base.h"                           // open_temprary_table
-#include "sql_table.h"                         // build_table_filename
 #include "lock.h"                              // unlock_table_name
 #include "sql_view.h"             // check_key_in_view, mysql_frm_type
 #include "sql_parse.h"            // mysql_init_select
@@ -485,6 +484,9 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   DBUG_EXECUTE_IF("show_explain_probe_delete_exec_start", 
                   dbug_serve_apcs(thd, 1););
 
+  if (!(select && select->quick))
+    status_var_increment(thd->status_var.delete_scan_count);
+
   if (query_plan.using_filesort)
   {
     ha_rows examined_rows;
@@ -500,7 +502,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
       Filesort_tracker *fs_tracker= 
         thd->lex->explain->get_upd_del_plan()->filesort_tracker;
 
-      if (!(sortorder= make_unireg_sortorder(thd, order, &length, NULL)) ||
+      if (!(sortorder= make_unireg_sortorder(thd, NULL, 0, order, &length, NULL)) ||
 	  (table->sort.found_records= filesort(thd, table, sortorder, length,
                                                select, HA_POS_ERROR,
                                                true,
@@ -571,9 +573,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   {
     explain->tracker.on_record_read();
     if (table->vfield)
-      update_virtual_fields(thd, table,
-                            table->triggers ? VCOL_UPDATE_ALL :
-                                              VCOL_UPDATE_FOR_READ);
+      update_virtual_fields(thd, table, VCOL_UPDATE_FOR_READ);
     thd->inc_examined_row_count(1);
     // thd->is_error() is tested to disallow delete row on error
     if (!select || select->skip_record(thd) > 0)
@@ -1348,4 +1348,3 @@ bool multi_delete::send_eof()
   }
   return 0;
 }
-

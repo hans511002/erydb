@@ -1,0 +1,273 @@
+# $Id$
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
+
+AC_PREREQ(2.69)
+AC_INIT(erydb, 5.1.1, hans511002@sohu.com)
+AC_CONFIG_MACRO_DIR([m4])
+### we don't want the deault CXXFLAGS set by AC_INIT, but we do want to allow the user to set them
+SAVE_CXXFLAGS=
+if test -n "$CXXFLAGS"; then
+	SAVE_CXXFLAGS="$CXXFLAGS"
+fi
+CXXFLAGS=
+SAVE_CFLAGS=
+if test -n "$CFLAGS"; then
+	SAVE_CFLAGS="$CFLAGS"
+fi
+CFLAGS=
+## AC_CONFIG_SRCDIR([configcpp/configcpp.cpp])
+AM_INIT_AUTOMAKE
+AC_CONFIG_HEADER([config.h])
+
+AC_PREFIX_DEFAULT([/usr/local/erydb])
+
+AC_LANG_CPLUSPLUS
+
+# Checks for programs.
+AC_PROG_CC
+if test -n "$SAVE_CFLAGS"; then
+	CFLAGS="$SAVE_CFLAGS"
+else
+	CFLAGS=
+fi
+AC_PROG_CXX
+if test -n "$SAVE_CXXFLAGS"; then
+	CXXFLAGS="$SAVE_CXXFLAGS"
+else
+	CXXFLAGS=
+fi
+AC_ENABLE_STATIC([no])
+AC_PROG_LIBTOOL
+AC_PROG_INSTALL
+AC_PROG_LEX
+if test "x$LEX" = "x:"; then
+	AC_MSG_ERROR([Could not find a usable lex program!])
+fi
+AC_PROG_YACC
+$YACC --version >/dev/null 2>&1
+if test $? -ne 0; then
+	AC_MSG_ERROR([Could not find a usable yacc program!])
+fi
+AC_PROG_AWK
+AC_PROG_CPP
+AC_PROG_LN_S
+AC_PROG_MAKE_SET
+
+# FIXME:
+# for quicklz (note this macro is not needed if autotools is 1.14 or 
+# greater, but old versions of CentOS do not have newer version
+# of autotools
+AM_PROG_CC_C_O
+
+# Checks for header files.
+AC_FUNC_ALLOCA
+AC_HEADER_STDC
+AC_HEADER_SYS_WAIT
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/file.h sys/mount.h sys/socket.h sys/statfs.h sys/time.h sys/timeb.h syslog.h unistd.h utime.h values.h])
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_HEADER_STAT
+AC_HEADER_STDBOOL
+AC_C_CONST
+AC_C_INLINE
+AC_TYPE_MODE_T
+AC_TYPE_OFF_T
+AC_TYPE_PID_T
+AC_C_RESTRICT
+AC_TYPE_SIZE_T
+AC_HEADER_TIME
+AC_STRUCT_TM
+AC_C_VOLATILE
+AC_CHECK_TYPES([ptrdiff_t])
+
+# Checks for library functions.
+AC_FUNC_ERROR_AT_LINE
+AC_REPLACE_FNMATCH
+AC_FUNC_FORK
+AC_FUNC_MALLOC
+AC_FUNC_MEMCMP
+AC_FUNC_MKTIME
+AC_FUNC_SELECT_ARGTYPES
+AC_FUNC_SETVBUF_REVERSED
+AC_TYPE_SIGNAL
+AC_FUNC_STAT
+AC_FUNC_STRERROR_R
+AC_FUNC_STRFTIME
+AC_FUNC_STRTOD
+AC_FUNC_UTIME_NULL
+AC_CHECK_FUNCS([alarm dup2 floor ftime ftruncate gethostbyname getpagesize gettimeofday inet_ntoa isascii localtime_r memchr memmove memset mkdir pow regcomp rmdir select setenv setlocale socket strcasecmp strchr strcspn strdup strerror strrchr strspn strstr strtol strtoul strtoull utime])
+
+AM_PATH_XML2([2.6.26])
+if test "x$XML_CPPFLAGS" = "x"; then
+	AC_MSG_ERROR([Could not find a usable libxml2 development environment!])
+fi
+
+AC_CHECK_HEADERS([zlib.h])
+if test "x$ac_cv_header_zlib_h" != "xyes"; then
+	AC_MSG_ERROR([Could not find a usable zlib development environment!])
+fi
+
+AC_CHECK_HEADERS([readline/readline.h])
+if test "x$ac_cv_header_readline_readline_h" != "xyes"; then
+	AC_MSG_ERROR([Could not find a usable readline development environment!])
+fi
+
+AC_CHECK_HEADERS([ncurses.h])
+if test "x$ac_cv_header_ncurses_h" != "xyes"; then
+	AC_MSG_ERROR([Could not find a usable ncurses development environment!])
+fi
+
+#CXX_FLAG_CHECK([-Wno-unused-local-typedefs])
+#CXX_FLAG_CHECK([-Wno-unused-result])
+#CXX_FLAG_CHECK([-Wno-format])
+
+AC_MSG_CHECKING(whether to enable debugging)
+AC_SUBST([erydb_cppflags], [' '])
+AC_ARG_WITH([debug],
+	AS_HELP_STRING([--with-debug],[include debugging symbols/no optimization]))
+if test "x$with_debug" = "xyes"; then
+#Debug
+	AC_SUBST([erydb_cxxflags],['-ggdb3 -Wall -D_DEBUG -fpie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing -fstack-protector --param=ssp-buffer-size=4 -DENABLED_DEBUG_SYNC  -DSAFE_MUTEX -DERYDB_DEBUG   -DSAFEMALLOC -Wextra -Wformat-security -Wno-init-self -Wvla -Woverloaded-virtual -Wno-unused-parameter '])
+	AC_SUBST([erydb_cflags],['-ggdb3 -Wall -D_DEBUG -fpie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing -fstack-protector --param=ssp-buffer-size=4 -DENABLED_DEBUG_SYNC  -DSAFE_MUTEX -DERYDB_DEBUG   -DSAFEMALLOC -Wextra -Wformat-security -Wno-init-self -Wvla -Woverloaded-virtual -Wno-unused-parameter  '])
+	AC_MSG_RESULT(yes)
+elif test "x$with_debug" = "xrel"; then
+	AC_SUBST([erydb_cxxflags],[" -w -DENABLED_DEBUG_SYNC  -DSAFE_MUTEX -DERYDB_DEBUG   -DSAFEMALLOC -DDBUG_ON -D_DEBUG -pie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing  -fstack-protector --param=ssp-buffer-size=4 -DWITH_INNODB_DISALLOW_WRITES  -D_FORTIFY_SOURCE=2 $cxx_extra_flags"])
+	AC_SUBST([erydb_cflags],['   -w -DENABLED_DEBUG_SYNC  -DSAFE_MUTEX -DERYDB_DEBUG   -DSAFEMALLOC -DDBUG_ON -D_DEBUG -pie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing  -fstack-protector --param=ssp-buffer-size=4 -DWITH_INNODB_DISALLOW_WRITES  -D_FORTIFY_SOURCE=2'])
+	AC_MSG_RESULT(no)
+else
+	AC_SUBST([erydb_cxxflags],["-w  -DDBUG_OFF -g0 -O3  -pie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing  -fstack-protector --param=ssp-buffer-size=4 -DWITH_INNODB_DISALLOW_WRITES  -DNDEBUG -D_FORTIFY_SOURCE=2  $cxx_extra_flags"])
+	AC_SUBST([erydb_cflags],['  -w  -DDBUG_OFF -g0 -O3  -pie -fPIC -Wl,-z,relro,-z,now  -fno-strict-aliasing  -fstack-protector --param=ssp-buffer-size=4 -DWITH_INNODB_DISALLOW_WRITES  -DNDEBUG -D_FORTIFY_SOURCE=2 '])
+	AC_MSG_RESULT(no)
+fi
+AC_SUBST([erydbinstall], ['${prefix}'])
+AC_SUBST([erydb_ldflags],['-Wl,--rpath -Wl,${erydbinstall}/lib -Wl,--no-as-needed -Wl,--add-needed'])
+
+AC_MSG_CHECKING(for CPU architecture)
+uname=`uname -m`
+AS_IF(
+   [test `expr $uname : 'i.86'` -gt 0], [AC_SUBST([march_flags], ['-march=pentium4'])] [AC_MSG_RESULT(pentium4)],
+   [AC_SUBST([march_flags], [' '])] [AC_MSG_RESULT(x86_64)]
+)
+
+AC_SUBST([libdir], ['${erydbinstall}/lib'])
+AC_SUBST([bindir], ['${erydbinstall}/bin'])
+AC_SUBST([includedir], ['${erydbinstall}/include'])
+AC_SUBST([etcdir], ['${erydbinstall}/etc'])
+AC_SUBST([sysconfdir], ['${erydbinstall}/etc'])
+AC_SUBST([mandir], ['${erydbinstall}/man'])
+AC_SUBST([sbindir], ['${erydbinstall}/sbin'])
+AC_SUBST([sharedir], ['${erydbinstall}/share'])
+AC_SUBST([postdir], ['${erydbinstall}/post'])
+AC_SUBST([localdir], ['${erydbinstall}/local'])
+AC_SUBST([mysqldir], ['${erydbinstall}/mysql'])
+AC_SUBST([mibdir], ['${erydbinstall}/share/snmp/mibs'])
+AC_SUBST([toolsdir], ['${erydbinstall}/tools'])
+
+AC_SUBST([netsnmp_libs], ['-L${abs_top_builddir}/net-snmp/net-snmp/snmplib/.libs -L${abs_top_builddir}/net-snmp/net-snmp/agent/helpers/.libs -L${abs_top_builddir}/net-snmp/net-snmp/agent/.libs/ -L${abs_top_builddir}/net-snmp/net-snmp/apps/.libs/ -lnetsnmpmibs -lnetsnmpagent -lnetsnmp -lnetsnmpmibs -lnetsnmphelpers'])
+AC_SUBST([erydb_common_libs], ['${abs_top_builddir}/utils/messageqcpp/libmessageqcpp.la ${abs_top_builddir}/utils/loggingcpp/libloggingcpp.la ${abs_top_builddir}/utils/configcpp/libconfigcpp.la ${abs_top_builddir}/utils/startup/liberydbboot.a -lxml2 -lpthread -lrt -lboost_system -lboost_filesystem -lboost_thread -lboost_regex -lboost_date_time'])
+AC_SUBST([erydb_oam_libs], ['${abs_top_builddir}/oam/oamcpp/liboamcpp.la ${abs_top_builddir}/snmpd/snmpmanager/libsnmpmanager.la ${netsnmp_libs}'])
+AC_SUBST([erydb_brm_libs], ['${abs_top_builddir}/versioning/BRM/libbrm.la ${abs_top_builddir}/utils/erydbdatafile/liberydbdatafile.la ${abs_top_builddir}/utils/cacheutils/libcacheutils.la ${abs_top_builddir}/utils/rwlock/librwlock.la ${abs_top_builddir}/utils/compress/libcompress.la ${erydb_oam_libs} ${erydb_common_libs}'])
+AC_SUBST([erydb_exec_libs], ['${abs_top_builddir}/dbcon/joblist/libjoblist.la ${abs_top_builddir}/dbcon/execplan/libexecplan.la ${abs_top_builddir}/utils/windowfunction/libwindowfunction.la ${abs_top_builddir}/utils/joiner/libjoiner.la ${abs_top_builddir}/utils/rowgroup/librowgroup.la ${abs_top_builddir}/utils/funcexp/libfuncexp.la ${abs_top_builddir}/utils/udfsdk/libudfsdk.la ${abs_top_builddir}/utils/dataconvert/libdataconvert.la ${abs_top_builddir}/utils/common/libcommon.la ${abs_top_builddir}/utils/compress/libcompress.la ${abs_top_builddir}/utils/mysqlcl_erydb/libmysqlcl_erydb.la ${abs_top_builddir}/utils/querystats/libquerystats.la ${abs_top_builddir}/utils/querytele/libquerytele.la ${abs_top_builddir}/utils/thrift/libthrift.la ${abs_top_builddir}/utils/threadpool/libthreadpool.la ${erydb_brm_libs}'])
+AC_SUBST([erydb_write_libs], ['${abs_top_builddir}/dbcon/ddlpackageproc/libddlpackageproc.la ${abs_top_builddir}/dbcon/ddlpackage/libddlpackage.la ${abs_top_builddir}/dbcon/dmlpackageproc/libdmlpackageproc.la ${abs_top_builddir}/dbcon/dmlpackage/libdmlpackage.la ${abs_top_builddir}/writeengine/wrapper/libwriteengine.la ${abs_top_builddir}/writeengine/client/libwriteengineclient.la ${abs_top_builddir}/utils/erydbdatafile/liberydbdatafile.la ${abs_top_builddir}/utils/cacheutils/libcacheutils.la ${erydb_exec_libs}'])
+AC_SUBST([erydb_common_includes], ['-I${abs_top_builddir}/utils/libxml -I${abs_top_builddir}/utils/messageqcpp -I${abs_top_builddir}/writeengine/shared -I${abs_top_builddir}/utils/erydbdatafile -I${abs_top_builddir}/utils/loggingcpp -I${abs_top_builddir}/utils/configcpp -I${abs_top_builddir}/utils/compress -I${abs_top_builddir}/versioning/BRM -I${abs_top_builddir}/utils/rowgroup -I${abs_top_builddir}/utils/common -I${abs_top_builddir}/utils/dataconvert -I${abs_top_builddir}/utils/rwlock -I${abs_top_builddir}/utils/funcexp -I${abs_top_builddir}/snmpd/snmpmanager -I${abs_top_builddir}/utils -I${abs_top_builddir}/oam/oamcpp -I${abs_top_builddir}/dbcon/ddlpackageproc -I${abs_top_builddir}/dbcon/ddlpackage -I${abs_top_builddir}/dbcon/execplan -I${abs_top_builddir}/utils/startup -I${abs_top_builddir}/dbcon/joblist -I${abs_top_builddir}/writeengine/wrapper -I${abs_top_builddir}/writeengine/server -I${abs_top_builddir}/dbcon/dmlpackage -I${abs_top_builddir}/writeengine/client -I${abs_top_builddir}/dbcon/dmlpackageproc -I${abs_top_builddir}/utils/cacheutils -I${abs_top_builddir}/utils/mysqlcl_erydb -I${abs_top_builddir}/utils/querytele -I${abs_top_builddir}/utils/thrift -I${abs_top_builddir}/utils/joiner -I${abs_top_builddir}/utils/threadpool -I${abs_top_builddir}/utils/batchloader -I${abs_top_builddir}/utils/ddlcleanup -I${abs_top_builddir}/utils/querystats -I${abs_top_builddir}/writeengine/xml -I${abs_top_builddir}/../../../sql -I${abs_top_builddir}/../../../include -I${abs_top_builddir}/../../../pcre -I${abs_top_builddir}/../sql -I${abs_top_builddir}/../include -I${abs_top_builddir}/../pcre -I${abs_top_builddir}/net-snmp/net-snmp -I${abs_top_builddir}/net-snmp/net-snmp/include -I${abs_top_builddir}/snmpd/snmpmanager'])
+AC_SUBST([erydb_common_ldflags], [''])
+
+AC_CONFIG_FILES([
+	Makefile
+	utils/Makefile
+	utils/startup/Makefile
+	utils/common/Makefile
+	utils/configcpp/Makefile
+	utils/loggingcpp/Makefile
+	utils/messageqcpp/Makefile
+	utils/threadpool/Makefile
+	utils/rwlock/Makefile
+	utils/dataconvert/Makefile
+	utils/joiner/Makefile
+	utils/rowgroup/Makefile
+	utils/cacheutils/Makefile
+	utils/funcexp/Makefile
+	utils/udfsdk/Makefile
+	utils/compress/Makefile
+	utils/ddlcleanup/Makefile
+	utils/batchloader/Makefile
+	utils/mysqlcl_erydb/Makefile
+	utils/querystats/Makefile
+	utils/jemalloc/Makefile
+                 utils/liblicense/Makefile
+	utils/windowfunction/Makefile
+	utils/erydbdatafile/Makefile
+	utils/erydbhdfs/Makefile
+	utils/erydbhdfs/hdfs-12/Makefile
+	utils/erydbhdfs/hdfs-20/Makefile
+	utils/winport/Makefile
+	utils/thrift/Makefile
+	utils/querytele/Makefile
+	exemgr/Makefile
+	ddlproc/Makefile
+	dbcon/Makefile
+	dbcon/ddlpackage/Makefile
+	dbcon/ddlpackageproc/Makefile
+	dbcon/dmlpackage/Makefile
+	dbcon/dmlpackageproc/Makefile
+	dbcon/execplan/Makefile
+	dbcon/joblist/Makefile
+	dbcon/mysql/Makefile
+	dmlproc/Makefile
+	oam/Makefile
+	oam/etc/Makefile
+	oam/install_scripts/Makefile
+	oam/oamcpp/Makefile
+	oam/post/Makefile
+	oam/cloud/Makefile
+	oamapps/Makefile
+	oamapps/eryadmin/Makefile
+	oamapps/erydbDB/Makefile
+	oamapps/postConfigure/Makefile
+	oamapps/serverMonitor/Makefile
+	oamapps/sessionWalker/Makefile
+	oamapps/traphandler/Makefile
+	oamapps/sendtrap/Makefile
+	oamapps/erydbSupport/Makefile
+                 oamapps/licenseBuild/Makefile
+	primitives/Makefile
+	primitives/blockcache/Makefile
+	primitives/linux-port/Makefile
+	primitives/primproc/Makefile
+	decomsvr/Makefile
+	procmgr/Makefile
+	procmon/Makefile
+	net-snmp/Makefile
+	snmpd/Makefile
+	snmpd/etc/Makefile
+	snmpd/snmpmanager/Makefile
+	oamapps/erydbSupport/Makefile
+	tools/Makefile
+	tools/editem/Makefile
+	tools/cplogger/Makefile
+	tools/clearShm/Makefile
+	tools/setConfig/Makefile
+	tools/getConfig/Makefile
+	tools/dbbuilder/Makefile
+	tools/dbloadxml/Makefile
+	tools/configMgt/Makefile
+	tools/viewtablelock/Makefile
+	tools/cleartablelock/Makefile
+	tools/ddlcleanup/Makefile
+	tools/erydbmeminfo/Makefile
+	versioning/Makefile
+	versioning/BRM/Makefile
+	writeengine/Makefile
+	writeengine/shared/Makefile
+	writeengine/index/Makefile
+	writeengine/dictionary/Makefile
+	writeengine/wrapper/Makefile
+	writeengine/xml/Makefile
+	writeengine/bulk/Makefile
+	writeengine/client/Makefile
+	writeengine/splitter/Makefile
+	writeengine/server/Makefile
+	writeengine/redistribute/Makefile
+])
+AC_OUTPUT

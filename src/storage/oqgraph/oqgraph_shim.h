@@ -254,7 +254,7 @@ namespace boost
     typedef no_property type;
   };
 
-#if BOOST_VERSION >= 104601
+#if BOOST_VERSION < 106000 && BOOST_VERSION >= 104601
   template <>
   struct graph_bundle_type<oqgraph3::graph>
   {
@@ -273,6 +273,33 @@ namespace boost
     typedef no_edge_bundle type;
   };
 #endif
+
+  template<>
+  struct property_map<oqgraph3::graph, edge_weight_t>
+  {
+    typedef void type;
+    typedef oqgraph3::edge_weight_property_map const_type;
+  };
+
+  template<>
+  struct property_map<oqgraph3::graph, vertex_index_t>
+  {
+    typedef void type;
+    typedef oqgraph3::vertex_index_property_map const_type;
+  };
+
+  template<>
+  struct property_map<oqgraph3::graph, edge_index_t>
+  {
+    typedef void type;
+    typedef oqgraph3::edge_index_property_map const_type;
+  };
+
+}
+
+namespace oqgraph3
+{
+  using namespace boost;
 
   inline graph_traits<oqgraph3::graph>::vertex_descriptor
   source(
@@ -400,27 +427,6 @@ namespace boost
     }
     return count;
   }
-
-  template<>
-  struct property_map<oqgraph3::graph, edge_weight_t>
-  {
-    typedef void type;
-    typedef oqgraph3::edge_weight_property_map const_type;
-  };
-
-  template<>
-  struct property_map<oqgraph3::graph, vertex_index_t>
-  {
-    typedef void type;
-    typedef oqgraph3::vertex_index_property_map const_type;
-  };
-
-  template<>
-  struct property_map<oqgraph3::graph, edge_index_t>
-  {
-    typedef void type;
-    typedef oqgraph3::edge_index_property_map const_type;
-  };
 
   inline property_map<
       oqgraph3::graph,

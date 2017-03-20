@@ -211,7 +211,7 @@ PCOL TDBTBL::InsertSpecialColumn(PCOL scp)
 
   if (scp->GetAmType() == TYPE_AM_TABID)
     // This special column is handled locally
-    colp = new((TERYDBLK*)scp) TBTBLK(scp->GetValue());
+    colp = new((TIDBLK*)scp) TBTBLK(scp->GetValue());
   else  // Other special columns are treated normally
     colp = scp;
 
@@ -569,6 +569,9 @@ pthread_handler_t ThreadOpen(void *p)
   if (!my_thread_init()) {
     set_current_thd(cmp->Thd);
 
+		if (trace)
+			htrc("ThreadOpen: Thd=%d\n", cmp->Thd);
+
     // Try to open the connection
     if (!cmp->Tap->GetTo_Tdb()->OpenDB(cmp->G)) {
       cmp->Ready = true;
@@ -604,8 +607,13 @@ void TDBTBM::ResetDB(void)
     if (colp->GetAmType() == TYPE_AM_TABID)
       colp->COLBLK::Reset();
 
+	// Local tables
   for (PTABLE tabp = Tablist; tabp; tabp = tabp->GetNext())
     ((PTDBASE)tabp->GetTo_Tdb())->ResetDB();
+
+	// Remote tables
+	for (PTBMT tp = Tmp; tp; tp = tp->Next)
+		((PTDBASE)tp->Tap->GetTo_Tdb())->ResetDB();
 
   Tdbp = (Tablist) ? (PTDBASE)Tablist->GetTo_Tdb() : NULL;
   Crp = 0;

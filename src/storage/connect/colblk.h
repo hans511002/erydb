@@ -120,12 +120,12 @@ class DllExport SPCBLK : public COLBLK {
   }; // end of class SPCBLK
 
 /***********************************************************************/
-/*  Class RERYDBLK: ROWID special column descriptor.                     */
+/*  Class RIDBLK: ROWID special column descriptor.                     */
 /***********************************************************************/
-class DllExport RERYDBLK : public SPCBLK {
+class DllExport RIDBLK : public SPCBLK {
  public:
   // Constructor
-  RERYDBLK(PCOLUMN cp, bool rnm);
+  RIDBLK(PCOLUMN cp, bool rnm);
 
   // Implementation
   virtual int  GetAmType(void) {return TYPE_AM_ROWID;}
@@ -136,15 +136,15 @@ class DllExport RERYDBLK : public SPCBLK {
 
  protected:
   bool Rnm;                         // False for RowID, True for RowNum
-  }; // end of class RERYDBLK
+  }; // end of class RIDBLK
 
 /***********************************************************************/
-/*  Class FERYDBLK: FILEID special column descriptor.                    */
+/*  Class FIDBLK: FILEID special column descriptor.                    */
 /***********************************************************************/
-class DllExport FERYDBLK : public SPCBLK {
+class DllExport FIDBLK : public SPCBLK {
  public:
   // Constructor
-  FERYDBLK(PCOLUMN cp, OPVAL op);
+  FIDBLK(PCOLUMN cp, OPVAL op);
 
   // Implementation
   virtual int  GetAmType(void) {return TYPE_AM_FILID;}
@@ -156,15 +156,15 @@ class DllExport FERYDBLK : public SPCBLK {
  protected:
   PSZ   Fn;                         // The current To_File of the table
   OPVAL Op;                         // The file part operator
-  }; // end of class FERYDBLK
+  }; // end of class FIDBLK
 
 /***********************************************************************/
-/*  Class TERYDBLK: TABID special column descriptor.                     */
+/*  Class TIDBLK: TABID special column descriptor.                     */
 /***********************************************************************/
-class DllExport TERYDBLK : public SPCBLK {
+class DllExport TIDBLK : public SPCBLK {
  public:
   // Constructor
-  TERYDBLK(PCOLUMN cp);
+  TIDBLK(PCOLUMN cp);
 
   // Implementation
   virtual int  GetAmType(void) {return TYPE_AM_TABID;}
@@ -175,11 +175,11 @@ class DllExport TERYDBLK : public SPCBLK {
 
  protected:
   // Default constructor not to be used
-  TERYDBLK(void) {}
+  TIDBLK(void) {}
 
   // Members
   PSZ  Tname;                       // The current table name
-  }; // end of class TERYDBLK
+  }; // end of class TIDBLK
 
 /***********************************************************************/
 /*  Class PRTBLK: PARTID special column descriptor.                    */
@@ -205,12 +205,12 @@ class DllExport PRTBLK : public SPCBLK {
   }; // end of class PRTBLK
 
 /***********************************************************************/
-/*  Class SERYDBLK: SERVID special column descriptor.                    */
+/*  Class SIDBLK: SERVID special column descriptor.                    */
 /***********************************************************************/
-class DllExport SERYDBLK : public SPCBLK {
+class DllExport SIDBLK : public SPCBLK {
  public:
   // Constructor
-  SERYDBLK(PCOLUMN cp);
+  SIDBLK(PCOLUMN cp);
 
   // Implementation
   virtual int  GetAmType(void) {return TYPE_AM_SRVID;}
@@ -221,10 +221,10 @@ class DllExport SERYDBLK : public SPCBLK {
 
  protected:
   // Default constructor not to be used
-  SERYDBLK(void) {}
+  SIDBLK(void) {}
 
   // Members
   PSZ  Sname;                       // The current server name
-  }; // end of class SERYDBLK
+  }; // end of class SIDBLK
 
 #endif // __COLBLK__H

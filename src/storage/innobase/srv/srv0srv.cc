@@ -3,7 +3,7 @@
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, 2009 Google Inc.
 Copyright (c) 2009, Percona Inc.
-Copyright (c) 2013, 2014, SkySQL Ab. All Rights Reserved.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -60,7 +60,6 @@ Created 10/8/1995 Heikki Tuuri
 #include "btr0sea.h"
 #include "dict0load.h"
 #include "dict0boot.h"
-#include "dict0stats_bg.h" /* dict_stats_event */
 #include "srv0start.h"
 #include "row0mysql.h"
 #include "row0log.h"
@@ -89,15 +88,14 @@ UNIV_INTERN ulong	srv_fatal_semaphore_wait_threshold =  DEFAULT_SRV_FATAL_SEMAPH
 in microseconds, in order to reduce the lagging of the purge thread. */
 UNIV_INTERN ulint	srv_dml_needed_delay = 0;
 
-UNIV_INTERN ibool	srv_monitor_active = FALSE;
-UNIV_INTERN ibool	srv_error_monitor_active = FALSE;
+UNIV_INTERN bool	srv_monitor_active;
+UNIV_INTERN bool	srv_error_monitor_active;
 
-UNIV_INTERN ibool	srv_buf_dump_thread_active = FALSE;
+UNIV_INTERN bool	srv_buf_dump_thread_active;
 
-UNIV_INTERN ibool	srv_dict_stats_thread_active = FALSE;
+UNIV_INTERN bool	srv_dict_stats_thread_active;
 
-UNIV_INTERN ibool	srv_log_scrub_active = FALSE;
-UNIV_INTERN my_bool	srv_scrub_log = FALSE;
+UNIV_INTERN my_bool	srv_scrub_log;
 
 UNIV_INTERN const char*	srv_main_thread_op_info = "";
 
@@ -380,6 +378,7 @@ this many index pages, there are 2 ways to calculate statistics:
   table/index are not found in the innodb database */
 UNIV_INTERN unsigned long long	srv_stats_transient_sample_pages = 8;
 UNIV_INTERN my_bool		srv_stats_persistent = TRUE;
+UNIV_INTERN my_bool		srv_stats_include_delete_marked = FALSE;
 UNIV_INTERN unsigned long long	srv_stats_persistent_sample_pages = 20;
 UNIV_INTERN my_bool		srv_stats_auto_recalc = TRUE;
 
@@ -1549,6 +1548,7 @@ srv_export_innodb_status(void)
 	export_vars.innodb_pages_created = stat.n_pages_created;
 
 	export_vars.innodb_pages_read = stat.n_pages_read;
+	export_vars.innodb_page0_read = srv_stats.page0_read;
 
 	export_vars.innodb_pages_written = stat.n_pages_written;
 
@@ -1662,6 +1662,8 @@ srv_export_innodb_status(void)
 		crypt_stat.pages_flushed;
 	export_vars.innodb_encryption_rotation_estimated_iops =
 		crypt_stat.estimated_iops;
+	export_vars.innodb_encryption_key_requests =
+		srv_stats.n_key_requests;
 
 	export_vars.innodb_scrub_page_reorganizations =
 		scrub_stat.page_reorganizations;
@@ -1684,11 +1686,7 @@ A thread which prints the info output by various InnoDB monitors.
 @return	a dummy parameter */
 extern "C" UNIV_INTERN
 os_thread_ret_t
-DECLARE_THREAD(srv_monitor_thread)(
-/*===============================*/
-	void*	arg __attribute__((unused)))
-			/*!< in: a dummy parameter required by
-			os_thread_create */
+DECLARE_THREAD(srv_monitor_thread)(void*)
 {
 	ib_int64_t	sig_count;
 	double		time_elapsed;
@@ -1709,9 +1707,7 @@ DECLARE_THREAD(srv_monitor_thread)(
 #ifdef UNIV_PFS_THREAD
 	pfs_register_thread(srv_monitor_thread_key);
 #endif /* UNIV_PFS_THREAD */
-	srv_monitor_active = TRUE;
 
-	UT_NOT_USED(arg);
 	srv_last_monitor_time = ut_time();
 	last_table_monitor_time = ut_time();
 	last_tablespace_monitor_time = ut_time();
@@ -1843,7 +1839,7 @@ loop:
 	goto loop;
 
 exit_func:
-	srv_monitor_active = FALSE;
+	srv_monitor_active = false;
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
@@ -1861,11 +1857,7 @@ we should avoid waiting any mutexes in this function!
 @return	a dummy parameter */
 extern "C" UNIV_INTERN
 os_thread_ret_t
-DECLARE_THREAD(srv_error_monitor_thread)(
-/*=====================================*/
-	void*	arg __attribute__((unused)))
-			/*!< in: a dummy parameter required by
-			os_thread_create */
+DECLARE_THREAD(srv_error_monitor_thread)(void*)
 {
 	/* number of successive fatal timeouts observed */
 	ulint		fatal_cnt	= 0;
@@ -1891,7 +1883,6 @@ DECLARE_THREAD(srv_error_monitor_thread)(
 #ifdef UNIV_PFS_THREAD
 	pfs_register_thread(srv_error_monitor_thread_key);
 #endif /* UNIV_PFS_THREAD */
-	srv_error_monitor_active = TRUE;
 
 loop:
 	/* Try to track a strange bug reported by Harald Fuchs and others,
@@ -1977,7 +1968,7 @@ loop:
 		goto loop;
 	}
 
-	srv_error_monitor_active = FALSE;
+	srv_error_monitor_active = false;
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
@@ -2034,44 +2025,6 @@ srv_get_active_thread_type(void)
 	}
 
 	return(ret);
-}
-
-/**********************************************************************//**
-Check whether any background thread are active. If so print which thread
-is active. Send the threads wakeup signal.
-@return name of thread that is active or NULL */
-UNIV_INTERN
-const char*
-srv_any_background_threads_are_active(void)
-/*=======================================*/
-{
-	const char*	thread_active = NULL;
-
-	if (srv_read_only_mode) {
-		return(NULL);
-	} else if (srv_error_monitor_active) {
-		thread_active = "srv_error_monitor_thread";
-	} else if (lock_sys->timeout_thread_active) {
-		thread_active = "srv_lock_timeout thread";
-	} else if (srv_monitor_active) {
-		thread_active = "srv_monitor_thread";
-	} else if (srv_buf_dump_thread_active) {
-		thread_active = "buf_dump_thread";
-	} else if (srv_dict_stats_thread_active) {
-		thread_active = "dict_stats_thread";
-	} else if (srv_scrub_log && srv_log_scrub_thread_active) {
-		thread_active = "log_scrub_thread";
-	}
-
-	os_event_set(srv_error_event);
-	os_event_set(srv_monitor_event);
-	os_event_set(srv_buf_dump_event);
-	os_event_set(lock_sys->timeout_event);
-	os_event_set(dict_stats_event);
-	if (srv_scrub_log)
-		os_event_set(log_scrub_event);
-
-	return(thread_active);
 }
 
 /*******************************************************************//**
@@ -2309,7 +2262,7 @@ srv_master_do_active_tasks(void)
 	/* Do an ibuf merge */
 	srv_main_thread_op_info = "doing insert buffer merge";
 	counter_time = ut_time_us(NULL);
-	ibuf_contract_in_background(0, FALSE);
+	ibuf_merge_in_background(false);
 	MONITOR_INC_TIME_IN_MICRO_SECS(
 		MONITOR_SRV_IBUF_MERGE_MICROSECOND, counter_time);
 
@@ -2404,7 +2357,7 @@ srv_master_do_idle_tasks(void)
 	/* Do an ibuf merge */
 	counter_time = ut_time_us(NULL);
 	srv_main_thread_op_info = "doing insert buffer merge";
-	ibuf_contract_in_background(0, TRUE);
+	ibuf_merge_in_background(true);
 	MONITOR_INC_TIME_IN_MICRO_SECS(
 		MONITOR_SRV_IBUF_MERGE_MICROSECOND, counter_time);
 
@@ -2482,7 +2435,7 @@ srv_master_do_shutdown_tasks(
 
 	/* Do an ibuf merge */
 	srv_main_thread_op_info = "doing insert buffer merge";
-	n_bytes_merged = ibuf_contract_in_background(0, TRUE);
+	n_bytes_merged = ibuf_merge_in_background(true);
 
 	/* Flush logs if needed */
 	srv_sync_log_buffer_in_background();
@@ -2522,7 +2475,7 @@ extern "C" UNIV_INTERN
 os_thread_ret_t
 DECLARE_THREAD(srv_master_thread)(
 /*==============================*/
-	void*	arg __attribute__((unused)))
+	void*	arg MY_ATTRIBUTE((unused)))
 			/*!< in: a dummy parameter required by
 			os_thread_create */
 {
@@ -2666,7 +2619,7 @@ extern "C" UNIV_INTERN
 os_thread_ret_t
 DECLARE_THREAD(srv_worker_thread)(
 /*==============================*/
-	void*	arg __attribute__((unused)))	/*!< in: a dummy parameter
+	void*	arg MY_ATTRIBUTE((unused)))	/*!< in: a dummy parameter
 						required by os_thread_create */
 {
 	srv_slot_t*	slot;
@@ -2924,7 +2877,7 @@ extern "C" UNIV_INTERN
 os_thread_ret_t
 DECLARE_THREAD(srv_purge_coordinator_thread)(
 /*=========================================*/
-	void*	arg __attribute__((unused)))	/*!< in: a dummy parameter
+	void*	arg MY_ATTRIBUTE((unused)))	/*!< in: a dummy parameter
 						required by os_thread_create */
 {
 	srv_slot_t*	slot;

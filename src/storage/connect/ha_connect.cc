@@ -119,6 +119,7 @@
 #undef  OFFSET
 
 #define NOPARSE
+#define NJDBC
 #if defined(UNIX)
 #include "osutil.h"
 #endif   // UNIX
@@ -128,7 +129,8 @@
 #include "odbccat.h"
 #endif   // ODBC_SUPPORT
 #if defined(JDBC_SUPPORT)
-#include "jdbccat.h"
+#include "tabjdbc.h"
+#include "jdbconn.h"
 #endif   // JDBC_SUPPORT
 #include "xtable.h"
 #include "tabmysql.h"
@@ -169,9 +171,9 @@
 #define JSONMAX      10             // JSON Default max grp size
 
 extern "C" {
-       char version[]= "Version 1.04.0006 March 12, 2016";
+       char version[]= "Version 1.05.0001 December 13, 2016";
 #if defined(__WIN__)
-       char compver[]= "Version 1.04.0006 " __DATE__ " "  __TIME__;
+       char compver[]= "Version 1.05.0001 " __DATE__ " "  __TIME__;
        char slash= '\\';
 #else   // !__WIN__
        char slash= '/';
@@ -190,6 +192,17 @@ extern "C" {
 } // extern "C"
 #endif   // XMSG
 
+#if defined(JDBC_SUPPORT)
+	     char *JvmPath;
+			 char *ClassPath;
+#endif   // JDBC_SUPPORT
+
+#if defined(__WIN__)
+CRITICAL_SECTION parsec;      // Used calling the Flex parser
+#else   // !__WIN__
+pthread_mutex_t parmut = PTHREAD_MUTEX_INITIALIZER;
+#endif  // !__WIN__
+
 /***********************************************************************/
 /*  Utility functions.                                                 */
 /***********************************************************************/
@@ -197,7 +210,7 @@ PQRYRES OEMColumns(PGLOBAL g, PTOS topt, char *tab, char *db, bool info);
 PQRYRES VirColumns(PGLOBAL g, bool info);
 PQRYRES JSONColumns(PGLOBAL g, char *db, PTOS topt, bool info);
 PQRYRES XMLColumns(PGLOBAL g, char *db, char *tab, PTOS topt, bool info);
-int     TranslateJDBCType(int stp, int prec, int& len, char& v);
+int     TranslateJDBCType(int stp, char *tn, int prec, int& len, char& v);
 void    PushWarning(PGLOBAL g, THD *thd, int level);
 bool    CheckSelf(PGLOBAL g, TABLE_SHARE *s, const char *host,
                   const char *db, char *tab, const char *src, int port);
@@ -206,10 +219,12 @@ USETEMP UseTemp(void);
 int     GetConvSize(void);
 TYPCONV GetTypeConv(void);
 uint    GetJsonGrpSize(void);
+char   *GetJavaWrapper(void);
 uint    GetWorkSize(void);
 void    SetWorkSize(uint);
 extern "C" const char *msglang(void);
 
+static void PopUser(PCONNECT xp);
 static PCONNECT GetUser(THD *thd, PCONNECT xp);
 static PGLOBAL  GetPlug(THD *thd, PCONNECT& lxp);
 
@@ -318,6 +333,15 @@ static MYSQL_THDVAR_UINT(json_grp_size,
        "max number of rows for JSON aggregate functions.",
        NULL, NULL, JSONMAX, 1, INT_MAX, 1);
 
+#if defined(JDBC_SUPPORT)
+// Default java wrapper to use with JDBC tables
+static MYSQL_THDVAR_STR(java_wrapper,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_MEMALLOC,
+	"Java wrapper class name",
+	//     check_class_path, update_class_path,
+	NULL, NULL, "wrappers/JdbcInterface");
+#endif   // JDBC_SUPPORT
+
 #if defined(XMSG) || defined(NEWMSG)
 const char *language_names[]=
 {
@@ -370,6 +394,12 @@ extern "C" const char *msglang(void)
   return language_names[THDVAR(current_thd, msg_lang)];
 } // end of msglang
 #else   // !XMSG && !NEWMSG
+
+#if defined(JDBC_SUPPORT)
+char *GetJavaWrapper(void)
+{return connect_hton ? THDVAR(current_thd, java_wrapper) : (char*)"wrappers/JdbcInterface";}
+#endif   // JDBC_SUPPORT
+
 extern "C" const char *msglang(void)
 {
 #if defined(FRENCH)
@@ -482,13 +512,13 @@ ha_create_table_option connect_table_option_list[]=
   HA_TOPTION_NUMBER("QUOTED", quoted, (ulonglong) -1, 0, 3, 1),
   HA_TOPTION_NUMBER("ENDING", ending, (ulonglong) -1, 0, INT_MAX32, 1),
   HA_TOPTION_NUMBER("COMPRESS", compressed, 0, 0, 2, 1),
-//HA_TOPTION_BOOL("COMPRESS", compressed, 0),
   HA_TOPTION_BOOL("MAPPED", mapped, 0),
   HA_TOPTION_BOOL("HUGE", huge, 0),
   HA_TOPTION_BOOL("SPLIT", split, 0),
   HA_TOPTION_BOOL("READONLY", readonly, 0),
   HA_TOPTION_BOOL("SEPINDEX", sepindex, 0),
-  HA_TOPTION_END
+	HA_TOPTION_BOOL("ZIPPED", zipped, 0),
+	HA_TOPTION_END
 };
 
 
@@ -502,7 +532,6 @@ ha_create_table_option connect_field_option_list[]=
 {
   HA_FOPTION_NUMBER("FLAG", offset, (ulonglong) -1, 0, INT_MAX32, 1),
   HA_FOPTION_NUMBER("MAX_DIST", freq, 0, 0, INT_MAX32, 1), // BLK_INDX
-//HA_FOPTION_NUMBER("DISTRIB", opt, 0, 0, 2, 1),  // used for BLK_INDX
   HA_FOPTION_NUMBER("FIELD_LENGTH", fldlen, 0, 0, INT_MAX32, 1),
   HA_FOPTION_STRING("DATE_FORMAT", dateformat),
   HA_FOPTION_STRING("FIELD_FORMAT", fieldformat),
@@ -634,6 +663,7 @@ static int connect_init_func(void *p)
 
 #if defined(__WIN__)
   sql_print_information("CONNECT: %s", compver);
+	InitializeCriticalSection((LPCRITICAL_SECTION)&parsec);
 #else   // !__WIN__
   sql_print_information("CONNECT: %s", version);
 #endif  // !__WIN__
@@ -647,7 +677,6 @@ static int connect_init_func(void *p)
   connect_hton= (handlerton *)p;
   connect_hton->state= SHOW_OPTION_YES;
   connect_hton->create= connect_create_handler;
-//connect_hton->flags= HTON_TEMPORARY_NOT_SUPPORTED | HTON_NO_PARTITION;
   connect_hton->flags= HTON_TEMPORARY_NOT_SUPPORTED;
   connect_hton->table_options= connect_table_option_list;
   connect_hton->field_options= connect_field_option_list;
@@ -660,6 +689,9 @@ static int connect_init_func(void *p)
 
   DTVAL::SetTimeShift();      // Initialize time zone shift once for all
   BINCOL::SetEndian();        // Initialize host endian setting
+#if defined(JDBC_SUPPORT)
+	JDBConn::SetJVM();
+#endif   // JDBC_SUPPORT
   DBUG_RETURN(0);
 } // end of connect_init_func
 
@@ -676,11 +708,17 @@ static int connect_done_func(void *)
 
 #ifdef LIBXML2_SUPPORT
   XmlCleanupParserLib();
-#endif   // LIBXML2_SUPPORT
+#endif // LIBXML2_SUPPORT
 
-#if !defined(__WIN__)
-//PROFILE_End();                Causes signal 11
-#endif   // !__WIN__
+#ifdef JDBC_SUPPORT
+	JDBConn::ResetJVM();
+#endif // JDBC_SUPPORT
+
+#if	defined(__WIN__)
+	DeleteCriticalSection((LPCRITICAL_SECTION)&parsec);
+#else   // !__WIN__
+	PROFILE_End();
+#endif  // !__WIN__
 
   for (pc= user_connect::to_users; pc; pc= pn) {
     if (pc->g)
@@ -792,34 +830,43 @@ ha_connect::~ha_connect(void)
                          table ? table->s->table_name.str : "<null>",
                          xp, xp ? xp->count : 0);
 
-  if (xp) {
-    PCONNECT p;
-
-    xp->count--;
-
-    for (p= user_connect::to_users; p; p= p->next)
-      if (p == xp)
-        break;
-
-    if (p && !p->count) {
-      if (p->next)
-        p->next->previous= p->previous;
-
-      if (p->previous)
-        p->previous->next= p->next;
-      else
-        user_connect::to_users= p->next;
-
-      } // endif p
-
-    if (!xp->count) {
-      PlugCleanup(xp->g, true);
-      delete xp;
-      } // endif count
-
-    } // endif xp
-
+	PopUser(xp);
 } // end of ha_connect destructor
+
+
+/****************************************************************************/
+/*  Check whether this user can be removed.                                 */
+/****************************************************************************/
+static void PopUser(PCONNECT xp)
+{
+	if (xp) {
+		xp->count--;
+
+		if (!xp->count) {
+			PCONNECT p;
+
+			for (p= user_connect::to_users; p; p= p->next)
+			  if (p == xp)
+				  break;
+
+		  if (p) {
+			  if (p->next)
+				  p->next->previous= p->previous;
+
+			  if (p->previous)
+				  p->previous->next= p->next;
+			  else
+				  user_connect::to_users= p->next;
+
+		  } // endif p
+
+			PlugCleanup(xp->g, true);
+			delete xp;
+		} // endif count
+
+	} // endif xp
+
+} // end of PopUser
 
 
 /****************************************************************************/
@@ -827,7 +874,7 @@ ha_connect::~ha_connect(void)
 /****************************************************************************/
 static PCONNECT GetUser(THD *thd, PCONNECT xp)
 {
-  if (!thd)
+	if (!thd)
     return NULL;
 
   if (xp && thd == xp->thdp)
@@ -850,7 +897,6 @@ static PCONNECT GetUser(THD *thd, PCONNECT xp)
 
   return xp;
 } // end of GetUser
-
 
 /****************************************************************************/
 /*  Get the global pointer of the user of this handler.                     */
@@ -1087,7 +1133,9 @@ bool GetBooleanTableOption(PGLOBAL g, PTOS options, char *opname, bool bdef)
     opval= options->sepindex;
   else if (!stricmp(opname, "Header"))
     opval= (options->header != 0);   // Is Boolean for some table types
-  else if (options->oplist)
+	else if (!stricmp(opname, "Zipped"))
+		opval = options->zipped;
+	else if (options->oplist)
     if ((pv= GetListOption(g, opname, options->oplist)))
       opval= (!*pv || *pv == 'y' || *pv == 'Y' || atoi(pv) != 0);
 
@@ -1099,7 +1147,7 @@ bool GetBooleanTableOption(PGLOBAL g, PTOS options, char *opname, bool bdef)
 /****************************************************************************/
 int GetIntegerTableOption(PGLOBAL g, PTOS options, char *opname, int idef)
 {
-  ulonglong opval= NO_IVAL;
+  ulonglong opval= (ulonglong) NO_IVAL;
 
   if (!options)
     return idef;
@@ -1194,8 +1242,10 @@ char *ha_connect::GetStringOption(char *opname, char *sdef)
 
   if (opval && (!stricmp(opname, "connect") 
              || !stricmp(opname, "tabname") 
-             || !stricmp(opname, "filename")))
-    opval = GetRealString(opval);
+             || !stricmp(opname, "filename")
+						 || !stricmp(opname, "optname")
+						 || !stricmp(opname, "entry")))
+						 opval = GetRealString(opval);
 
   if (!opval) {
     if (sdef && !strcmp(sdef, "*")) {
@@ -1937,7 +1987,7 @@ int ha_connect::MakeRecord(char *buf)
   if (trace > 1)
     htrc("Maps: read=%08X write=%08X vcol=%08X defr=%08X defw=%08X\n",
             *table->read_set->bitmap, *table->write_set->bitmap,
-            *table->vcol_set->bitmap,
+            (table->vcol_set) ? *table->vcol_set->bitmap : 0,
             *table->def_read_set.bitmap, *table->def_write_set.bitmap);
 
   // Avoid asserts in field::store() for columns that are not updated
@@ -4117,7 +4167,8 @@ bool ha_connect::check_privileges(THD *thd, PTOS options, char *dbn, bool quick)
     case TAB_DIR:
     case TAB_MAC:
     case TAB_WMI:
-    case TAB_OEM:
+		case TAB_ZIP:
+		case TAB_OEM:
 #ifdef NO_EMBEDDED_ACCESS_CHECKS
       return false;
 #endif
@@ -5125,13 +5176,13 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   char        v=0, spc= ',', qch= 0;
   const char *fncn= "?";
   const char *user, *fn, *db, *host, *pwd, *sep, *tbl, *src;
-  const char *col, *ocl, *rnk, *pic, *fcl, *skc;
+  const char *col, *ocl, *rnk, *pic, *fcl, *skc, *zfn;
   char       *tab, *dsn, *shm, *dpath; 
 #if defined(__WIN__)
   char       *nsp= NULL, *cls= NULL;
 #endif   // __WIN__
-  int         port= 0, hdr= 0, mxr= 0, mxe= 0, rc= 0;
-  int         cop __attribute__((unused))= 0, lrecl= 0;
+//int         hdr, mxe;
+	int         port = 0, mxr = 0, rc = 0, mul = 0, lrecl = 0;
 #if defined(ODBC_SUPPORT)
   POPARM      sop= NULL;
   char       *ucnc= NULL;
@@ -5140,10 +5191,10 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 #endif   // ODBC_SUPPORT
 #if defined(JDBC_SUPPORT)
 	PJPARM      sjp= NULL;
-	char       *jpath= NULL;
 	char       *driver= NULL;
 	char       *url= NULL;
-	char       *tabtyp = NULL;
+//char       *prop= NULL;
+	char       *tabtyp= NULL;
 #endif   // JDBC_SUPPORT
   uint        tm, fnc= FNC_NO, supfnc= (FNC_NO | FNC_COL);
   bool        bif, ok= false, dbf= false;
@@ -5163,7 +5214,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   if (!g)
     return HA_ERR_INTERNAL_ERROR;
 
-  user= host= pwd= tbl= src= col= ocl= pic= fcl= skc= rnk= dsn= NULL;
+  user= host= pwd= tbl= src= col= ocl= pic= fcl= skc= rnk= zfn= dsn= NULL;
 
   // Get the useful create options
   ttp= GetTypeID(topt->type);
@@ -5176,8 +5227,8 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   sep= topt->separator;
   spc= (!sep) ? ',' : *sep;
   qch= topt->qchar ? *topt->qchar : (signed)topt->quoted >= 0 ? '"' : 0;
-  hdr= (int)topt->header;
-  tbl= topt->tablist;
+	mul = (int)topt->multiple;
+	tbl= topt->tablist;
   col= topt->colist;
 
   if (topt->oplist) {
@@ -5207,16 +5258,18 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
       cnc= (!*ucnc || *ucnc == 'y' || *ucnc == 'Y' || atoi(ucnc) != 0);
 #endif
 #if defined(JDBC_SUPPORT)
-		jpath= GetListOption(g, "Jpath", topt->oplist, NULL);
 		driver= GetListOption(g, "Driver", topt->oplist, NULL);
-		url= GetListOption(g, "URL", topt->oplist, NULL);
+//	url= GetListOption(g, "URL", topt->oplist, NULL);
+//	prop = GetListOption(g, "Properties", topt->oplist, NULL);
 		tabtyp = GetListOption(g, "Tabtype", topt->oplist, NULL);
 #endif   // JDBC_SUPPORT
-    mxe= atoi(GetListOption(g,"maxerr", topt->oplist, "0"));
 #if defined(PROMPT_OK)
     cop= atoi(GetListOption(g, "checkdsn", topt->oplist, "0"));
 #endif   // PROMPT_OK
-  } else {
+#if defined(ZIP_SUPPORT)
+		zfn = GetListOption(g, "Zipfile", topt->oplist, NULL);
+#endif   // ZIP_SUPPORT
+	} else {
     host= "localhost";
     user= (ttp == TAB_ODBC ? NULL : "root");
   } // endif option_list
@@ -5224,7 +5277,18 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   if (!(shm= (char*)db))
     db= table_s->db.str;                   // Default value
 
-  // Check table type
+	// Save stack and allocation environment and prepare error return
+	if (g->jump_level == MAX_JUMP) {
+		strcpy(g->Message, MSG(TOO_MANY_JUMPS));
+		goto jer;
+	} // endif jump_level
+
+	if ((rc= setjmp(g->jumper[++g->jump_level])) != 0) {
+		my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
+		goto err;
+	} // endif rc
+
+	// Check table type
   if (ttp == TAB_UNDEF) {
     topt->type= (src) ? "MYSQL" : (tab) ? "PROXY" : "DOS";
     ttp= GetTypeID(topt->type);
@@ -5233,19 +5297,8 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   } else if (ttp == TAB_NIY) {
     sprintf(g->Message, "Unsupported table type %s", topt->type);
     my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
-    return HA_ERR_INTERNAL_ERROR;
+		goto err;
   } // endif ttp
-
-  // Save stack and allocation environment and prepare error return
-  if (g->jump_level == MAX_JUMP) {
-    strcpy(g->Message, MSG(TOO_MANY_JUMPS));
-    return HA_ERR_INTERNAL_ERROR;
-    } // endif jump_level
-
-  if ((rc= setjmp(g->jumper[++g->jump_level])) != 0) {
-    my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
-    goto err;
-    } // endif rc
 
   if (!tab) {
     if (ttp == TAB_TBL) {
@@ -5310,18 +5363,32 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 	case TAB_JDBC:
 		if (fnc & FNC_DRIVER) {
 			ok= true;
-		} else if (!url) {
-				strcpy(g->Message, "Missing URL");
+		} else if (!(url= strz(g, create_info->connect_string))) {
+			strcpy(g->Message, "Missing URL");
 		} else {
-			// Store ODBC additional parameters
+			// Store JDBC additional parameters
+			int      rc;
+			PJDBCDEF jdef= new(g) JDBCDEF();
+
+			jdef->SetName(create_info->alias);
 			sjp= (PJPARM)PlugSubAlloc(g, NULL, sizeof(JDBCPARM));
 			sjp->Driver= driver;
-			sjp->Url= url;
-			sjp->User= (char*)user;
-			sjp->Pwd= (char*)pwd;
+//		sjp->Properties = prop;
 			sjp->Fsize= 0;
 			sjp->Scrollable= false;
-			ok= true;
+
+			if ((rc = jdef->ParseURL(g, url, false)) == RC_OK) {
+				sjp->Url= url;
+				sjp->User= (char*)user;
+				sjp->Pwd= (char*)pwd;
+				ok= true;
+			} else if (rc == RC_NF) {
+				if (jdef->GetTabname())
+					tab= jdef->GetTabname();
+
+				ok= jdef->SetParms(sjp);
+			} // endif rc
+
 		} // endif's
 
 		supfnc |= (FNC_DRIVER | FNC_TABLE);
@@ -5409,7 +5476,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
     case TAB_XML:
 #endif   // LIBXML2_SUPPORT  ||         DOMDOC_SUPPORT
     case TAB_JSON:
-      if (!fn)
+      if (!fn && !zfn && !mul)
         sprintf(g->Message, "Missing %s file name", topt->type);
       else
         ok= true;
@@ -5473,7 +5540,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
             break;
           case FNC_TABLE:
-            qrp= ODBCTables(g, dsn, shm, tab, mxr, true, sop);
+            qrp= ODBCTables(g, dsn, shm, tab, NULL, mxr, true, sop);
             break;
           case FNC_DSN:
             qrp= ODBCDataSources(g, mxr, true);
@@ -5494,15 +5561,14 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 				case FNC_NO:
 				case FNC_COL:
 					if (src) {
-						qrp= JDBCSrcCols(g, jpath, (char*)src, sjp);
+						qrp= JDBCSrcCols(g, (char*)src, sjp);
 						src= NULL;     // for next tests
 					} else
-						qrp= JDBCColumns(g, jpath, shm, tab, NULL,
-														 mxr, fnc == FNC_COL, sjp);
+						qrp= JDBCColumns(g, shm, tab, NULL, mxr, fnc == FNC_COL, sjp);
 
 					break;
 				case FNC_TABLE:
-					qrp= JDBCTables(g, dsn, shm, tab, tabtyp, mxr, true, sjp);
+					qrp= JDBCTables(g, shm, tab, tabtyp, mxr, true, sjp);
 					break;
 #if 0
 				case FNC_DSN:
@@ -5510,7 +5576,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 					break;
 #endif // 0
 				case FNC_DRIVER:
-					qrp= JDBCDrivers(g, jpath, mxr, true);
+					qrp= JDBCDrivers(g, mxr, true);
 					break;
 				default:
 					sprintf(g->Message, "invalid catfunc %s", fncn);
@@ -5524,7 +5590,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
                        NULL, port, fnc == FNC_COL);
         break;
       case TAB_CSV:
-        qrp= CSVColumns(g, dpath, fn, spc, qch, hdr, mxe, fnc == FNC_COL);
+				qrp = CSVColumns(g, dpath, topt, fnc == FNC_COL);
         break;
 #if defined(__WIN__)
       case TAB_WMI:
@@ -5585,7 +5651,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
         len= crp->Length;
         dec= crp->Prec;
         flg= crp->Flag;
-        v= crp->Var;
+        v= (crp->Kdata->IsUnsigned()) ? 'U' : crp->Var;
 				tm= (crp->Kdata->IsNullable()) ? 0 : NOT_NULL_FLAG;
 
         if (!len && typ == TYPE_STRING)
@@ -5599,6 +5665,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
     } else {
       char *schem= NULL;
+			char *tn= NULL;
 
       // Not a catalog table
       if (!qrp->Nblin) {
@@ -5615,7 +5682,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
         typ= len= prec= dec= 0;
         tm= NOT_NULL_FLAG;
         cnm= (char*)"noname";
-        dft= xtra= key= fmt= NULL;
+        dft= xtra= key= fmt= tn= NULL;
         v= ' ';
         rem= NULL;
 
@@ -5635,7 +5702,10 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
               typ= crp->Kdata->GetIntValue(i);
               v = (crp->Nulls) ? crp->Nulls[i] : 0;
               break;
-            case FLD_PREC:
+						case FLD_TYPENAME:
+							tn= crp->Kdata->GetCharValue(i);
+							break;
+						case FLD_PREC:
               // PREC must be always before LENGTH
               len= prec= crp->Kdata->GetIntValue(i);
               break;
@@ -5679,8 +5749,8 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
               break;
             case FLD_SCHEM:
-#if defined(ODBC_SUPPORT)
-              if (ttp == TAB_ODBC && crp->Kdata) {
+#if defined(ODBC_SUPPORT) || defined(JDBC_SUPPORT)
+              if ((ttp == TAB_ODBC || ttp == TAB_JDBC) && crp->Kdata) {
                 if (schem && stricmp(schem, crp->Kdata->GetCharValue(i))) {
                   sprintf(g->Message, 
                          "Several %s tables found, specify DBNAME", tab);
@@ -5690,7 +5760,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
                   schem= crp->Kdata->GetCharValue(i);
 
               } // endif ttp
-#endif   // ODBC_SUPPORT
+#endif   // ODBC_SUPPORT	||				 JDBC_SUPPORT
             default:
               break;                 // Ignore
             } // endswitch Fld
@@ -5743,7 +5813,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 						int  plgtyp;
 
 						// typ must be PLG type, not SQL type
-						if (!(plgtyp= TranslateJDBCType(typ, dec, prec, v))) {
+						if (!(plgtyp= TranslateJDBCType(typ, tn, dec, prec, v))) {
 							if (GetTypeConv() == TPC_SKIP) {
 								// Skip this column
 								sprintf(g->Message, "Column %s skipped (unsupported type %d)",
@@ -5761,11 +5831,9 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
 						switch (typ) {
 						case TYPE_DOUBLE:
+						case TYPE_DECIM:
 							// Some data sources do not count dec in length (prec)
 							prec += (dec + 2);        // To be safe
-							break;
-						case TYPE_DECIM:
-							prec= len;
 							break;
 						default:
 							dec= 0;
@@ -5792,6 +5860,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
       rc= init_table_share(thd, table_s, create_info, &sql);
 
     g->jump_level--;
+		PopUser(xp);
     return rc;
     } // endif ok
 
@@ -5799,7 +5868,9 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
  err:
   g->jump_level--;
-  return HA_ERR_INTERNAL_ERROR;
+ jer:
+	PopUser(xp);
+	return HA_ERR_INTERNAL_ERROR;
 } // end of connect_assisted_discovery
 
 /**
@@ -6831,6 +6902,21 @@ static MYSQL_SYSVAR_STR(errmsg_dir_path, msg_path,
        "../../../../storage/connect/");     // for testing
 #endif   // XMSG
 
+#if defined(JDBC_SUPPORT)
+static MYSQL_SYSVAR_STR(jvm_path, JvmPath,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_MEMALLOC,
+	"Path to the directory where is the JVM lib",
+	//     check_jvm_path, update_jvm_path,
+	NULL, NULL,	NULL);
+
+static MYSQL_SYSVAR_STR(class_path, ClassPath,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_MEMALLOC,
+	"Java class path",
+	//     check_class_path, update_class_path,
+	NULL, NULL, NULL);
+#endif   // JDBC_SUPPORT
+
+
 static struct st_mysql_sys_var* connect_system_variables[]= {
   MYSQL_SYSVAR(xtrace),
   MYSQL_SYSVAR(conv_size),
@@ -6848,7 +6934,12 @@ static struct st_mysql_sys_var* connect_system_variables[]= {
   MYSQL_SYSVAR(errmsg_dir_path),
 #endif   // XMSG
   MYSQL_SYSVAR(json_grp_size),
-  NULL
+#if defined(JDBC_SUPPORT)
+	MYSQL_SYSVAR(jvm_path),
+	MYSQL_SYSVAR(class_path),
+	MYSQL_SYSVAR(java_wrapper),
+#endif   // JDBC_SUPPORT
+	NULL
 };
 
 maria_declare_plugin(connect)
@@ -6864,7 +6955,7 @@ maria_declare_plugin(connect)
   0x0104,                                       /* version number (1.04) */
   NULL,                                         /* status variables */
   connect_system_variables,                     /* system variables */
-  "1.04.0006",                                  /* string version */
+  "1.05.0001",                                  /* string version */
   MariaDB_PLUGIN_MATURITY_GAMMA                 /* maturity */
 }
 maria_declare_plugin_end;

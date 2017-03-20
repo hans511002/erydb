@@ -1,0 +1,13 @@
+This is erydb 5.1.1
+erydb 5.1.1is the development version of erydb. 
+It is built by porting EryDB 4.6.7 on MariaDB 10.1.19 and adding entirely 
+new features not found anywhere else.
+
+erydb 5.1.1 is an GA release. This is the first MariaDB 
+EryDB release, not all features planned for the erydb 5.0 
+series are included in this release. 
+
+Additional features will be pushed in future releases. 
+A few things to notice:
+- Do not use alpha releases on production systems.
+- The building of the EryDB engine needs a special build environment. We're working on making it available for everyone to build.

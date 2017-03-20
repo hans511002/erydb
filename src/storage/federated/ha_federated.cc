@@ -339,7 +339,7 @@
     mysql-test/include/have_federated_db.inc
 
 
-    Other terydbits
+    Other tidbits
     -------------
 
     These were the files that were modified or created for this

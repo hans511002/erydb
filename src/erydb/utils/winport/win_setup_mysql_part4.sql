@@ -1,0 +1,21 @@
+CREATE FUNCTION caldisablepartitions RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION calenablepartitions RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION caldroppartitions RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION calshowpartitions RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION callastinsertid RETURNS INTEGER SONAME 'liberymysql.dll';
+CREATE FUNCTION caldroppartitionsbyvalue RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION caldisablepartitionsbyvalue RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION calenablepartitionsbyvalue RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION calshowpartitionsbyvalue RETURNS STRING SONAME 'liberymysql.dll';
+CREATE FUNCTION erydbpm RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbdbroot RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbsegment RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbsegmentdir RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbextentrelativerid RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbblockid RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbextentid RETURNS INTEGER soname 'liberymysql.dll';
+CREATE FUNCTION erydbextentmin RETURNS STRING soname 'liberymysql.dll';
+CREATE FUNCTION erydbextentmax RETURNS STRING soname 'liberymysql.dll';
+CREATE FUNCTION erydbpartition RETURNS STRING soname 'liberymysql.dll';
+CREATE FUNCTION erydblocalpm RETURNS INTEGER soname 'liberymysql.dll';
+

@@ -164,8 +164,8 @@ put_callback(DB *dest_db, DB *src_db, DBT_ARRAY *dest_key_arrays, DBT_ARRAY *des
 
     int index = 0;
 
-    for (int erydb = 1; erydb < dbnum; erydb++) {
-        index += is_new ? get_num_new_keys(i, erydb) : get_num_keys(i, erydb);
+    for (int idb = 1; idb < dbnum; idb++) {
+        index += is_new ? get_num_new_keys(i, idb) : get_num_keys(i, idb);
     }
     assert(src_val->size % sizeof(int) == 0);
     assert((int)src_val->size / 4 >= index + num_keys);

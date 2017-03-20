@@ -36,6 +36,7 @@ set(FT_SOURCES
   ft-flusher
   ft-hot-flusher
   ft-ops
+  ft-recount-rows
   ft-status
   ft-test-helpers
   ft-verify
@@ -54,8 +55,8 @@ set(FT_SOURCES
   msg_buffer
   node
   pivotkeys
+  serialize/rbtree_mhs
   serialize/block_allocator
-  serialize/block_allocator_strategy
   serialize/block_table
   serialize/compress
   serialize/ft_node-serialize

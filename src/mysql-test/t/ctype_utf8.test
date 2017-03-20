@@ -1679,6 +1679,43 @@ SELECT OCTET_LENGTH(a),a FROM t1;
 DROP TABLE t1;
 
 --echo #
+--echo # MDEV-8402 Bug#77473 Bug#21317406 TRUNCATED DATA WITH SUBQUERY & UTF8
+--echo #
+--echo #
+
+SET NAMES utf8;
+SELECT length(rpad(_utf8 0xD0B1, 65536, _utf8 0xD0B2)) AS data;
+SELECT length(data) AS len FROM (
+  SELECT rpad(_utf8 0xD0B1, 65536, _utf8 0xD0B2) AS data
+) AS sub;
+
+SELECT length(rpad(_utf8 0xD0B1, 65535, _utf8 0xD0B2)) AS data;
+SELECT length(data) AS len FROM (
+  SELECT rpad(_utf8 0xD0B1, 65535, _utf8 0xD0B2) AS data
+) AS sub;
+
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 36766) AS data) AS sub;
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 36767) AS data) AS sub;
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 36778) AS data) AS sub;
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 65535) AS data) AS sub;
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 65536) AS data) AS sub;
+SELECT length(data) AS len FROM (SELECT REPEAT('ä', 65537) AS data) AS sub;
+
+--echo #
+--echo # MDEV-10717 Assertion `!null_value' failed in virtual bool Item::send(Protocol*, String*)
+--echo #
+CREATE TABLE t1 (i INT, KEY(i));
+INSERT INTO t1 VALUES (20081205),(20050327);
+SELECT HEX(i), HEX(CHAR(i USING utf8)) FROM t1;
+SET sql_mode='STRICT_ALL_TABLES';
+SELECT HEX(i), HEX(CHAR(i USING utf8)) FROM t1;
+# Avoid garbage in the output
+--replace_column 1 ###
+SELECT CHAR(i USING utf8) FROM t1;
+SET sql_mode=DEFAULT;
+DROP TABLE t1;
+
+--echo #
 --echo # End of 5.5 tests
 --echo #
 

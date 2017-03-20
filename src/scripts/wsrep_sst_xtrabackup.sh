@@ -149,7 +149,7 @@ get_transfer()
         fi
         wsrep_log_info "Using netcat as streamer"
         if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]];then
-            if nc -h | grep -q ncat;then 
+            if nc -h 2>&1 | grep -q ncat;then 
                 tcmd="nc -l ${TSST_PORT}"
             else 
                 tcmd="nc -dl ${TSST_PORT}"
@@ -436,15 +436,17 @@ then
 
     if [ $WSREP_SST_OPT_BYPASS -eq 0 ]
     then
+        usrst=0
         TMPDIR="${TMPDIR:-/tmp}"
 
-        if [ "$WSREP_SST_OPT_USER" != "(null)" ]; then
+        if [[ -n "${WSREP_SST_OPT_USER:-}" && "$WSREP_SST_OPT_USER" != "(null)" ]]; then
            INNOEXTRA+=" --user=$WSREP_SST_OPT_USER"
+           usrst=1
         fi
 
         if [ -n "${WSREP_SST_OPT_PSWD:-}" ]; then
            INNOEXTRA+=" --password=$WSREP_SST_OPT_PSWD"
-        else
+        elif [[ $usrst -eq 1 ]];then
            # Empty password, used for testing, debugging etc.
            INNOEXTRA+=" --password="
         fi

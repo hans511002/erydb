@@ -1804,6 +1804,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
       {
         KEY_PART_INFO *new_key_part= (keyinfo-1)->key_part +
                                      (keyinfo-1)->ext_key_parts;
+        uint add_keyparts_for_this_key= add_first_key_parts;
 
         /* 
           Do not extend the key that contains a component
@@ -1815,19 +1816,20 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           if (share->field[fieldnr-1]->key_length() !=
               keyinfo->key_part[i].length)
 	  {
-            add_first_key_parts= 0;
+            add_keyparts_for_this_key= 0;
             break;
           }
         }
 
-        if (add_first_key_parts < keyinfo->ext_key_parts-keyinfo->user_defined_key_parts)
+        if (add_keyparts_for_this_key < (keyinfo->ext_key_parts -
+                                        keyinfo->user_defined_key_parts))
 	{
           share->ext_key_parts-= keyinfo->ext_key_parts;
           key_part_map ext_key_part_map= keyinfo->ext_key_part_map;
           keyinfo->ext_key_parts= keyinfo->user_defined_key_parts;
           keyinfo->ext_key_flags= keyinfo->flags;
 	  keyinfo->ext_key_part_map= 0; 
-          for (i= 0; i < add_first_key_parts; i++)
+          for (i= 0; i < add_keyparts_for_this_key; i++)
 	  {
             if (ext_key_part_map & 1<<i)
 	    {
@@ -3442,18 +3444,23 @@ bool get_field(MEM_ROOT *mem, Field *field, String *res)
 {
   char buff[MAX_FIELD_WIDTH], *to;
   String str(buff,sizeof(buff),&my_charset_bin);
-  uint length;
+  bool rc;
+  THD *thd= field->get_thd();
+  ulonglong sql_mode_backup= thd->variables.sql_mode;
+  thd->variables.sql_mode&= ~MODE_PAD_CHAR_TO_FULL_LENGTH;
 
   field->val_str(&str);
-  if (!(length= str.length()))
+  if ((rc= !str.length() ||
+           !(to= strmake_root(mem, str.ptr(), str.length()))))
   {
     res->length(0);
-    return 1;
+    goto ex;
   }
-  if (!(to= strmake_root(mem, str.ptr(), length)))
-    length= 0;                                  // Safety fix
-  res->set(to, length, field->charset());
-  return 0;
+  res->set(to, str.length(), field->charset());
+
+ex:
+  thd->variables.sql_mode= sql_mode_backup;
+  return rc;
 }
 
 
@@ -3472,17 +3479,10 @@ bool get_field(MEM_ROOT *mem, Field *field, String *res)
 
 char *get_field(MEM_ROOT *mem, Field *field)
 {
-  char buff[MAX_FIELD_WIDTH], *to;
-  String str(buff,sizeof(buff),&my_charset_bin);
-  uint length;
-
-  field->val_str(&str);
-  length= str.length();
-  if (!length || !(to= (char*) alloc_root(mem,length+1)))
-    return NullS;
-  memcpy(to,str.ptr(),(uint) length);
-  to[length]=0;
-  return to;
+  String str;
+  bool rc= get_field(mem, field, &str);
+  DBUG_ASSERT(rc || str.ptr()[str.length()] == '\0');
+  return  rc ? NullS : (char *) str.ptr();
 }
 
 /*
@@ -3858,6 +3858,15 @@ Table_check_intact::check(TABLE *table, const TABLE_FIELD_DEF *table_def)
     table->s->table_field_def_cache= table_def;
 
   DBUG_RETURN(error);
+}
+
+
+void Table_check_intact_log_error::report_error(uint, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  error_log_print(ERROR_LEVEL, fmt, args);
+  va_end(args);
 }
 
 
@@ -6863,11 +6872,9 @@ bool is_simple_order(ORDER *order)
   @details
     The function computes the values of the virtual columns of the table and
     stores them in the table record buffer.
-    If vcol_update_mode is set to VCOL_UPDATE_ALL then all virtual column are
-    computed. Otherwise, only fields from vcol_set are computed: all of them,
-    if vcol_update_mode is set to VCOL_UPDATE_FOR_WRITE, and, only those with
-    the stored_in_db flag set to false, if vcol_update_mode is equal to
-    VCOL_UPDATE_FOR_READ.
+    Only fields from vcol_set are computed: all of them, if vcol_update_mode is
+    set to VCOL_UPDATE_FOR_WRITE, and, only those with the stored_in_db flag
+    set to false, if vcol_update_mode is equal to VCOL_UPDATE_FOR_READ.
 
   @retval
     0    Success
@@ -6883,15 +6890,16 @@ int update_virtual_fields(THD *thd, TABLE *table,
   int error __attribute__ ((unused))= 0;
   DBUG_ASSERT(table && table->vfield);
 
-  thd->reset_arena_for_cached_items(table->expr_arena);
+  Query_arena backup_arena;
+  thd->set_n_backup_active_arena(table->expr_arena, &backup_arena);
+
   /* Iterate over virtual fields in the table */
   for (vfield_ptr= table->vfield; *vfield_ptr; vfield_ptr++)
   {
     vfield= (*vfield_ptr);
     DBUG_ASSERT(vfield->vcol_info && vfield->vcol_info->expr_item);
-    if ((bitmap_is_set(table->vcol_set, vfield->field_index) &&
-         (vcol_update_mode == VCOL_UPDATE_FOR_WRITE || !vfield->stored_in_db)) ||
-        vcol_update_mode == VCOL_UPDATE_ALL)
+    if (bitmap_is_set(table->vcol_set, vfield->field_index) &&
+        (vcol_update_mode == VCOL_UPDATE_FOR_WRITE || !vfield->stored_in_db))
     {
       /* Compute the actual value of the virtual fields */
       error= vfield->vcol_info->expr_item->save_in_field(vfield, 0);
@@ -6902,7 +6910,7 @@ int update_virtual_fields(THD *thd, TABLE *table,
       DBUG_PRINT("info", ("field '%s' - skipped", vfield->field_name));
     }
   }
-  thd->reset_arena_for_cached_items(0);
+  thd->restore_active_arena(table->expr_arena, &backup_arena);
   DBUG_RETURN(0);
 }
 
@@ -7235,7 +7243,6 @@ bool TABLE_LIST::init_derived(THD *thd, bool init_view)
   {
     /* A subquery might be forced to be materialized due to a side-effect. */
     if (!is_materialized_derived() && first_select->is_mergeable() &&
-        thd->erydb_vtable.vtable_state != THD::ERYDB_CREATE_VTABLE &&
         optimizer_flag(thd, OPTIMIZER_SWITCH_DERIVED_MERGE) &&
         !(thd->lex->sql_command == SQLCOM_UPDATE_MULTI ||
           thd->lex->sql_command == SQLCOM_DELETE_MULTI))

@@ -1822,6 +1822,26 @@ DROP TABLE t1;
 
 
 --echo #
+--echo # MDEV-8402 Bug#77473 Bug#21317406 TRUNCATED DATA WITH SUBQUERY & UTF8
+--echo #
+--echo #
+
+SET NAMES utf8mb4;
+SELECT length(repeat(_utf8mb4 0xE29883, 21844)) AS data;
+SELECT length(data) AS len
+FROM ( SELECT repeat(_utf8mb4 0xE29883, 21844) AS data ) AS sub;
+
+SELECT length(repeat(_utf8mb4 0xE29883, 21846)) AS data;
+SELECT length(data) AS len
+FROM ( SELECT repeat(_utf8mb4 0xE29883, 21846) AS data ) AS sub;
+
+SELECT LENGTH(data) AS len FROM (SELECT REPEAT('☃', 21844) AS data ) AS sub;
+SELECT LENGTH(data) AS len FROM (SELECT REPEAT('☃', 21845) AS data ) AS sub;
+SELECT LENGTH(data) AS len FROM (SELECT REPEAT('☃', 21846) AS data ) AS sub;
+SELECT LENGTH(data) AS len FROM (SELECT REPEAT('☃', 65535) AS data ) AS sub;
+SELECT LENGTH(data) AS len FROM (SELECT REPEAT('☃', 65536) AS data ) AS sub;
+
+--echo #
 --echo # End of 5.5 tests
 --echo #
 
@@ -1847,6 +1867,14 @@ set @@collation_connection=utf8mb4_bin;
 --echo #
 --echo # Start of 10.0 tests
 --echo #
+
+--echo #
+--echo # MDEV-11343 LOAD DATA INFILE fails to load data with an escape character followed by a multi-byte character
+--echo #
+CREATE TABLE t1 (a TEXT CHARACTER SET utf8mb4);
+LOAD DATA INFILE '../../std_data/loaddata/mdev-11343.txt' INTO TABLE t1 CHARACTER SET utf8mb4;
+SELECT HEX(a) FROM t1;
+DROP TABLE t1;
 
 --echo #
 --echo # MDEV-6566 Different INSERT behaviour on bad bytes with and without character set conversion
@@ -1887,10 +1915,6 @@ DROP TABLE t1;
 
 --echo #
 --echo # End of 10.0 tests
---echo #
-
---echo #
---echo # End of tests
 --echo #
 
 --echo #

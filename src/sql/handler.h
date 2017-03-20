@@ -25,7 +25,6 @@
 #pragma interface			/* gcc class implementation */
 #endif
 
-#include <stdint.h>
 #include "sql_const.h"
 #include "mysqld.h"                             /* server_id */
 #include "sql_plugin.h"        /* plugin_ref, st_plugin_int, plugin */
@@ -41,7 +40,7 @@
 #include <ft_global.h>
 #include <keycache.h>
 #include <mysql/psi/mysql_table.h>
-#include <wsrep_mysqld.h>
+#include <stdint.h>
 
 #ifdef _MSC_VER
 #ifndef STDINT_H
@@ -3223,6 +3222,7 @@ public:
     If this method returns nonzero, it will also signal the storage
     engine that the next read will be a locking re-read of the row.
   */
+  bool ha_was_semi_consistent_read();
   virtual bool was_semi_consistent_read() { return 0; }
   /**
     Tell the engine whether it should avoid unnecessary lock waits.
@@ -4295,4 +4295,7 @@ inline const char *table_case_name(HA_CREATE_INFO *info, const char *name)
 
 void print_keydup_error(TABLE *table, KEY *key, const char *msg, myf errflag);
 void print_keydup_error(TABLE *table, KEY *key, myf errflag);
+
+int del_global_index_stat(THD *thd, TABLE* table, KEY* key_info);
+int del_global_table_stat(THD *thd, LEX_STRING *db, LEX_STRING *table);
 #endif /* HANDLER_INCLUDED */

@@ -2,6 +2,7 @@
 
 Copyright (c) 2007, 2012, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2010-2012, Percona Inc. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -33,6 +34,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <read0i_s.h>
 #include <trx0i_s.h>
 #include "srv0start.h"	/* for srv_was_started */
+#include <btr0pcur.h> /* btr_pcur_t */
 #include <btr0sea.h> /* btr_search_sys */
 #include <log0recv.h> /* recv_sys */
 #include <fil0fil.h>
@@ -43,6 +45,30 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "trx0sys.h" /* for trx_sys */
 
 #define PLUGIN_AUTHOR "Percona Inc."
+
+static int field_store_blob(Field*, const char*, uint) __attribute__((unused));
+/** Auxiliary function to store (char*, len) value in MYSQL_TYPE_BLOB
+field.
+@return	0 on success */
+static
+int
+field_store_blob(
+	Field*		field,		/*!< in/out: target field for storage */
+	const char*	data,		/*!< in: pointer to data, or NULL */
+	uint		data_len)	/*!< in: data length */
+{
+	int	ret;
+
+	if (data != NULL) {
+		ret = field->store(data, data_len, system_charset_info);
+		field->set_notnull();
+	} else {
+		ret = 0; /* success */
+		field->set_null();
+	}
+
+	return(ret);
+}
 
 static
 int
@@ -176,7 +202,7 @@ UNIV_INTERN struct st_mysql_plugin i_s_xtradb_read_view =
 	STRUCT_FLD(status_vars, NULL),
 	STRUCT_FLD(system_vars, NULL),
 	STRUCT_FLD(version_info, INNODB_VERSION_STR),
-        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_GAMMA),
+        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_STABLE),
 };
 
 static ST_FIELD_INFO xtradb_internal_hash_tables_fields_info[] =
@@ -381,7 +407,7 @@ UNIV_INTERN struct st_mysql_plugin i_s_xtradb_internal_hash_tables =
 	STRUCT_FLD(status_vars, NULL),
 	STRUCT_FLD(system_vars, NULL),
 	STRUCT_FLD(version_info, INNODB_VERSION_STR),
-        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_GAMMA),
+        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_STABLE),
 };
 
 
@@ -514,5 +540,5 @@ UNIV_INTERN struct st_mysql_plugin	i_s_xtradb_rseg =
 	STRUCT_FLD(status_vars, NULL),
 	STRUCT_FLD(system_vars, NULL),
 	STRUCT_FLD(version_info, INNODB_VERSION_STR),
-        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_GAMMA),
+        STRUCT_FLD(maturity, MariaDB_PLUGIN_MATURITY_STABLE),
 };

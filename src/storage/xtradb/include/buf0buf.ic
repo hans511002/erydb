@@ -305,6 +305,20 @@ buf_page_set_state(
 		ut_a(state == BUF_BLOCK_NOT_USED);
 		break;
 	case BUF_BLOCK_FILE_PAGE:
+		if (!(state == BUF_BLOCK_NOT_USED
+	              || state == BUF_BLOCK_REMOVE_HASH)) {
+			const char *old_state_name = buf_get_state_name((buf_block_t*)bpage);
+			bpage->state = state;
+
+			fprintf(stderr,
+				"InnoDB: Error: block old state %d (%s) "
+				" new state %d (%s) not correct\n",
+				old_state,
+				old_state_name,
+				state,
+				buf_get_state_name((buf_block_t*)bpage));
+		}
+
 		ut_a(state == BUF_BLOCK_NOT_USED
 		     || state == BUF_BLOCK_REMOVE_HASH);
 		break;
@@ -730,6 +744,19 @@ buf_block_get_frame(
 
 	SRV_CORRUPT_TABLE_CHECK(block, return(0););
 
+	return(buf_nonnull_block_get_frame(block));
+}
+
+/*********************************************************************//**
+Gets a pointer to the memory frame of a block, where block is known not to be
+NULL.
+@return	pointer to the frame */
+UNIV_INLINE
+buf_frame_t*
+buf_nonnull_block_get_frame(
+/*========================*/
+	const buf_block_t*	block)	/*!< in: pointer to the control block */
+{
 	switch (buf_block_get_state(block)) {
 	case BUF_BLOCK_POOL_WATCH:
 	case BUF_BLOCK_ZIP_PAGE:
@@ -754,6 +781,7 @@ buf_block_get_frame(
 ok:
 	return((buf_frame_t*) block->frame);
 }
+
 #endif /* UNIV_DEBUG */
 
 /*********************************************************************//**

@@ -279,8 +279,7 @@ int table2myisam(TABLE *table_arg, MI_KEYDEF **keydef_out,
       keydef[i].seg[j].type= (int) type;
       keydef[i].seg[j].start= pos->key_part[j].offset;
       keydef[i].seg[j].length= pos->key_part[j].length;
-      keydef[i].seg[j].bit_start= keydef[i].seg[j].bit_end=
-        keydef[i].seg[j].bit_length= 0;
+      keydef[i].seg[j].bit_start= keydef[i].seg[j].bit_length= 0;
       keydef[i].seg[j].bit_pos= 0;
       keydef[i].seg[j].language= field->charset_for_protocol()->number;
 
@@ -1455,6 +1454,7 @@ int ha_myisam::enable_indexes(uint mode)
   else if (mode == HA_KEY_SWITCH_NONUNIQ_SAVE)
   {
     THD *thd= table->in_use;
+    int was_error= thd->is_error();
     HA_CHECK &param= *(HA_CHECK*) thd->alloc(sizeof(param));
     const char *save_proc_info=thd->proc_info;
 
@@ -1500,7 +1500,7 @@ int ha_myisam::enable_indexes(uint mode)
         might have been set by the first repair. They can still be seen
         with SHOW WARNINGS then.
       */
-      if (! error)
+      if (! error && ! was_error)
         thd->clear_error();
     }
     info(HA_STATUS_CONST);

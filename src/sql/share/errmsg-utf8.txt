@@ -6781,7 +6781,7 @@ ER_FK_COLUMN_NOT_NULL
         ger "Spalte '%-.192s' kann nicht NOT NULL sein: wird für eine Fremdschlüsselbeschränkung '%-.192s' SET NULL benötigt"
 
 ER_DUP_INDEX
-  eng "Duplicate index '%-.64s' defined on the table '%-.64s.%-.64s'. This is deprecated and will be disallowed in a future release."
+  eng "Duplicate index %`s. This is deprecated and will be disallowed in a future release."
 
 ER_FK_COLUMN_CANNOT_CHANGE
   eng "Cannot change column '%-.192s': used in a foreign key constraint '%-.192s'"
@@ -7139,3 +7139,6 @@ ER_KILL_QUERY_DENIED_ERROR
 ER_NO_EIS_FOR_FIELD
         eng "Engine-independent statistics are not collected for column '%s'"
         ukr "Незалежна від типу таблиці статистика не збирається для стовбця '%s'"
+ER_WARN_AGGFUNC_DEPENDENCE
+        eng "Aggregate function '%-.192s)' of SELECT #%d belongs to SELECT #%d"
+        ukr "Агрегатна функція '%-.192s)' з SELECTу #%d належить до SELECTу #%d"

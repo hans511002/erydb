@@ -2962,7 +2962,7 @@ Create_udf_func::create(THD *thd, udf_func *udf, List<Item> *item_list)
     arg_count= item_list->elements;
 
   //@erydb @bug5881
-  if (!(udf->dl && strcmp(udf->dl, "libcalmysql.so") == 0))
+  if (!(udf->dl && strcmp(udf->dl, "liberymysql.so") == 0))
     thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_UDF);
 
   DBUG_ASSERT(   (udf->type == UDFTYPE_FUNCTION)

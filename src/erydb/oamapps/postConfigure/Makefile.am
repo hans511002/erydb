@@ -1,0 +1,52 @@
+# Copyright (C) 2014 EryDB, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2 of
+# the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+# MA 02110-1301, USA.
+
+# $Id: Makefile.am 333 2009-04-03 20:35:04Z rdempsey $
+## Process this file with automake to produce Makefile.in
+
+AM_CPPFLAGS = $(erydb_cppflags)
+AM_CFLAGS = $(erydb_cflags)
+AM_CXXFLAGS = $(erydb_cxxflags)
+AM_LDFLAGS = $(erydb_ldflags) -lreadline -lncurses
+bin_PROGRAMS = postConfigure installer getMySQLpw amazonInstaller mycnfUpgrade
+postConfigure_SOURCES = postConfigure.cpp helpers.cpp
+postConfigure_CPPFLAGS = $(erydb_common_includes) $(AM_CPPFLAGS)
+postConfigure_LDFLAGS = $(erydb_common_ldflags) $(erydb_common_libs) $(erydb_oam_libs) $(erydb_exec_libs) -lreadline -lncurses $(AM_LDFLAGS)
+installer_SOURCES = installer.cpp helpers.cpp
+installer_CPPFLAGS = $(erydb_common_includes) $(AM_CPPFLAGS)
+installer_LDFLAGS = $(erydb_common_ldflags) $(erydb_common_libs) $(erydb_oam_libs) $(erydb_exec_libs) $(AM_LDFLAGS)
+getMySQLpw_SOURCES = getMySQLpw.cpp
+getMySQLpw_CPPFLAGS = $(erydb_common_includes) $(AM_CPPFLAGS)
+getMySQLpw_LDFLAGS = $(erydb_common_ldflags) $(erydb_common_libs) $(erydb_oam_libs) $(erydb_exec_libs) $(AM_LDFLAGS)
+amazonInstaller_SOURCES = amazonInstaller.cpp helpers.cpp
+amazonInstaller_CPPFLAGS = $(erydb_common_includes) $(AM_CPPFLAGS)
+amazonInstaller_LDFLAGS = $(erydb_common_ldflags) $(erydb_common_libs) $(erydb_oam_libs) $(erydb_exec_libs) $(AM_LDFLAGS)
+mycnfUpgrade_SOURCES = mycnfUpgrade.cpp
+mycnfUpgrade_CPPFLAGS = $(erydb_common_includes) $(AM_CPPFLAGS)
+mycnfUpgrade_LDFLAGS = $(erydb_common_ldflags) $(erydb_common_libs) $(erydb_oam_libs) $(erydb_exec_libs) $(AM_LDFLAGS)
+
+
+test:
+
+coverage:
+
+leakcheck:
+
+docs:
+
+bootstrap: install-data-am
+

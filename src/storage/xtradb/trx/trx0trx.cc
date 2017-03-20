@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -1117,6 +1117,8 @@ trx_start_low(
 
 	trx->start_time = ut_time();
 
+	trx->start_time_micro = clock();
+
 	MONITOR_INC(MONITOR_TRX_ACTIVE);
 }
 
@@ -1179,7 +1181,7 @@ trx_serialisation_number_get(
 /****************************************************************//**
 Assign the transaction its history serialisation number and write the
 update UNDO log record to the assigned rollback segment. */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 trx_write_serialisation_history(
 /*============================*/
@@ -1266,7 +1268,7 @@ trx_write_serialisation_history(
 
 /********************************************************************
 Finalize a transaction containing updates for a FTS table. */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 trx_finalize_for_fts_table(
 /*=======================*/
@@ -1299,7 +1301,7 @@ trx_finalize_for_fts_table(
 
 /******************************************************************//**
 Finalize a transaction containing updates to FTS tables. */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 trx_finalize_for_fts(
 /*=================*/
@@ -1374,7 +1376,7 @@ trx_flush_log_if_needed_low(
 /**********************************************************************//**
 If required, flushes the log to disk based on the value of
 innodb_flush_log_at_trx_commit. */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 trx_flush_log_if_needed(
 /*====================*/
@@ -1389,7 +1391,7 @@ trx_flush_log_if_needed(
 
 /****************************************************************//**
 Commits a transaction in memory. */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 trx_commit_in_memory(
 /*=================*/
@@ -1570,7 +1572,7 @@ trx_commit_in_memory(
 	ut_ad(!trx->in_rw_trx_list);
 
 #ifdef WITH_WSREP
-	if (wsrep_on(trx->mysql_thd)) {
+	if (trx->mysql_thd && wsrep_on(trx->mysql_thd)) {
 		trx->lock.was_chosen_as_deadlock_victim = FALSE;
 	}
 #endif
@@ -2441,7 +2443,7 @@ which is in the prepared state
 @return	trx on match, the trx->xid will be invalidated;
 note that the trx may have been committed, unless the caller is
 holding lock_sys->mutex */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 trx_t*
 trx_get_trx_by_xid_low(
 /*===================*/

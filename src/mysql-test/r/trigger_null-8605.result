@@ -318,9 +318,8 @@ id
 delete from t1;
 create trigger t1_bi before insert on t1 for each row begin end;
 insert t1 values (0);
-select * from t1;
-id
-0
+insert t1 (id) values (0);
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
 drop table t1;
 create table t1 (a int not null, b int);
 create trigger trgi before update on t1 for each row do 1;
@@ -354,4 +353,14 @@ insert into t1 (a) values (3);
 show columns from t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	NO	PRI	NULL	
+drop table t1;
+create table t1 (
+pk int primary key,
+i int,
+v1 int as (i) virtual,
+v2 int as (i) virtual
+);
+create trigger tr before update on t1 for each row set @a = 1;
+insert into t1 (pk, i) values (null, null);
+ERROR 23000: Column 'pk' cannot be null
 drop table t1;

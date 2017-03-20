@@ -54,7 +54,7 @@ var jQuery = function( selector, context ) {
 	rvalidchars = /^[\],:{}\s]*$/,
 	rvalidescape = /\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g,
 	rvalidtokens = /"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g,
-	rvalerydbraces = /(?:^|:|,)(?:\s*\[)+/g,
+	rvalidbraces = /(?:^|:|,)(?:\s*\[)+/g,
 
 	// Useragent RegExp
 	rwebkit = /(webkit)[ \/]([\w.]+)/,
@@ -568,7 +568,7 @@ jQuery.extend({
 		// Logic borrowed from http://json.org/json2.js
 		if ( rvalidchars.test( data.replace( rvalidescape, "@" )
 			.replace( rvalidtokens, "]" )
-			.replace( rvalerydbraces, "")) ) {
+			.replace( rvalidbraces, "")) ) {
 
 			return ( new Function( "return " + data ) )();
 

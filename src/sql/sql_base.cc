@@ -1,4 +1,4 @@
-/* Copyright (c) 2000, 2015, Oracle and/or its affiliates.
+/* Copyright (c) 2000, 2016, Oracle and/or its affiliates.
    Copyright (c) 2010, 2016, MariaDB
 
    This program is free software; you can redistribute it and/or modify
@@ -691,7 +691,6 @@ bool close_cached_connection_tables(THD *thd, LEX_STRING *connection)
 
 static void mark_temp_tables_as_free_for_reuse(THD *thd)
 {
-  rpl_group_info *rgi_slave;
   DBUG_ENTER("mark_temp_tables_as_free_for_reuse");
 
   if (thd->query_id == 0)
@@ -700,9 +699,7 @@ static void mark_temp_tables_as_free_for_reuse(THD *thd)
     DBUG_VOID_RETURN;
   }
   
-  rgi_slave=thd->rgi_slave;
-  if ((!rgi_slave && thd->temporary_tables) ||
-      (rgi_slave && unlikely(rgi_slave->rli->save_temporary_tables)))
+  if (thd->have_temporary_tables())
   {
     thd->lock_temporary_tables();
     for (TABLE *table= thd->temporary_tables ; table ; table= table->next)
@@ -710,15 +707,7 @@ static void mark_temp_tables_as_free_for_reuse(THD *thd)
       if ((table->query_id == thd->query_id) && ! table->open_by_handler)
         mark_tmp_table_for_reuse(table);
     }
-    thd->unlock_temporary_tables();
-    if (rgi_slave)
-    {
-      /*
-        Temporary tables are shared with other by sql execution threads.
-        As a safety messure, clear the pointer to the common area.
-      */
-      thd->temporary_tables= 0;
-    }
+    thd->unlock_temporary_tables(1);
   }
   DBUG_VOID_RETURN;
 }
@@ -1686,7 +1675,7 @@ TABLE *find_temporary_table(THD *thd,
       break;
     }
   }
-  thd->unlock_temporary_tables();
+  thd->unlock_temporary_tables(0);
   return result;
 }
 
@@ -1789,7 +1778,7 @@ void close_temporary_table(THD *thd, TABLE *table,
     thread_safe_decrement32(&slave_open_temp_tables);
     table->in_use= 0;                           // No statistics
   }
-  thd->unlock_temporary_tables();
+  thd->unlock_temporary_tables(0);
   close_temporary(table, free_share, delete_table);
   DBUG_VOID_RETURN;
 }
@@ -4745,13 +4734,22 @@ restart:
     }
   }
 
-  if (WSREP_ON                                 &&
-      wsrep_replicate_myisam                   &&
-      (*start)                                 &&
-      (*start)->table                          &&
-      (*start)->table->file->ht == myisam_hton &&
-      sqlcom_can_generate_row_events(thd)      &&
-      thd->get_command() != COM_STMT_PREPARE)
+  if (WSREP_ON                                         &&
+      wsrep_replicate_myisam                           &&
+      (*start)                                         &&
+      (*start)->table                                  &&
+      (*start)->table->file->ht == myisam_hton         &&
+      wsrep_thd_exec_mode(thd) == LOCAL_STATE          &&
+      !is_stat_table((*start)->db, (*start)->alias)    &&
+      thd->get_command() != COM_STMT_PREPARE           &&
+      ((thd->lex->sql_command == SQLCOM_INSERT         ||
+        thd->lex->sql_command == SQLCOM_INSERT_SELECT  ||
+        thd->lex->sql_command == SQLCOM_REPLACE        ||
+        thd->lex->sql_command == SQLCOM_REPLACE_SELECT ||
+        thd->lex->sql_command == SQLCOM_UPDATE         ||
+        thd->lex->sql_command == SQLCOM_UPDATE_MULTI   ||
+        thd->lex->sql_command == SQLCOM_LOAD           ||
+        thd->lex->sql_command == SQLCOM_DELETE)))
   {
     WSREP_TO_ISOLATION_BEGIN(NULL, NULL, (*start));
   }
@@ -4891,6 +4889,15 @@ handle_view(THD *thd, Query_tables_list *prelocking_ctx,
                                  &table_list->view->sroutines_list,
                                  table_list->top_table());
   }
+
+  /*
+    If a trigger was defined on one of the associated tables then assign the
+    'trg_event_map' value of the view to the next table in table_list. When a
+    Stored function is invoked, all the associated tables including the tables
+    associated with the trigger are prelocked.
+  */
+  if (table_list->trg_event_map && table_list->next_global)
+    table_list->next_global->trg_event_map= table_list->trg_event_map;
   return FALSE;
 }
 
@@ -5749,7 +5756,7 @@ TABLE *open_table_uncached(THD *thd, handlerton *hton,
     {
       thread_safe_increment32(&slave_open_temp_tables);
     }
-    thd->unlock_temporary_tables();
+    thd->unlock_temporary_tables(0);
   }
   tmp_table->pos_in_table_list= 0;
   DBUG_PRINT("tmptable", ("opened table: '%s'.'%s' 0x%lx", tmp_table->s->db.str,
@@ -8731,7 +8738,8 @@ fill_record(THD *thd, TABLE *table_arg, List<Item> &fields, List<Item> &values,
     value=v++;
     Field *rfield= field->field;
     TABLE* table= rfield->table;
-    if (rfield == table->next_number_field)
+    if (table->next_number_field &&
+        rfield->field_index ==  table->next_number_field->field_index)
       table->auto_increment_field_not_null= TRUE;
     if (rfield->vcol_info && 
         value->type() != Item::DEFAULT_VALUE_ITEM && 
@@ -8756,9 +8764,7 @@ fill_record(THD *thd, TABLE *table_arg, List<Item> &fields, List<Item> &values,
   /* Update virtual fields*/
   thd->abort_on_warning= FALSE;
   if (vcol_table && vcol_table->vfield &&
-      update_virtual_fields(thd, vcol_table,
-                            vcol_table->triggers ? VCOL_UPDATE_ALL :
-                                                   VCOL_UPDATE_FOR_WRITE))
+      update_virtual_fields(thd, vcol_table, VCOL_UPDATE_FOR_WRITE))
     goto err;
   thd->abort_on_warning= save_abort_on_warning;
   thd->no_errors=        save_no_errors;
@@ -8877,9 +8883,7 @@ fill_record_n_invoke_before_triggers(THD *thd, TABLE *table, List<Item> &fields,
       if (item_field && item_field->field && table && table->vfield)
       {
         DBUG_ASSERT(table == item_field->field->table);
-        result= update_virtual_fields(thd, table,
-                                      table->triggers ? VCOL_UPDATE_ALL :
-                                                        VCOL_UPDATE_FOR_WRITE);
+        result= update_virtual_fields(thd, table, VCOL_UPDATE_FOR_WRITE);
       }
     }
   }
@@ -8967,9 +8971,7 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
   /* Update virtual fields*/
   thd->abort_on_warning= FALSE;
   if (table->vfield &&
-      update_virtual_fields(thd, table, 
-                            table->triggers ? VCOL_UPDATE_ALL :
-                                              VCOL_UPDATE_FOR_WRITE))
+      update_virtual_fields(thd, table, VCOL_UPDATE_FOR_WRITE))
     goto err;
   thd->abort_on_warning= abort_on_warning_saved;
   DBUG_RETURN(thd->is_error());
@@ -9023,9 +9025,7 @@ fill_record_n_invoke_before_triggers(THD *thd, TABLE *table, Field **ptr,
   {
     DBUG_ASSERT(table == (*ptr)->table);
     if (table->vfield)
-      result= update_virtual_fields(thd, table,
-                                    table->triggers ? VCOL_UPDATE_ALL : 
-                                                      VCOL_UPDATE_FOR_WRITE);
+      result= update_virtual_fields(thd, table, VCOL_UPDATE_FOR_WRITE);
   }
   return result;
 
@@ -9271,6 +9271,7 @@ open_system_tables_for_read(THD *thd, TABLE_LIST *table_list,
   */
   lex->reset_n_backup_query_tables_list(&query_tables_list_backup);
   thd->reset_n_backup_open_tables_state(backup);
+  thd->lex->sql_command= SQLCOM_SELECT;
 
   if (open_and_lock_tables(thd, table_list, FALSE,
                            MYSQL_OPEN_IGNORE_FLUSH |

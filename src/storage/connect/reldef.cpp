@@ -1,7 +1,7 @@
 /************* RelDef CPP Program Source Code File (.CPP) **************/
 /* PROGRAM NAME: RELDEF                                                */
 /* -------------                                                       */
-/*  Version 1.5                                                        */
+/*  Version 1.6                                                        */
 /*                                                                     */
 /* COPYRIGHT:                                                          */
 /* ----------                                                          */
@@ -40,10 +40,12 @@
 #include "tabcol.h"
 #include "filamap.h"
 #include "filamfix.h"
+#if defined(VCT_SUPPORT)
 #include "filamvct.h"
-#if defined(ZIP_SUPPORT)
-#include "filamzip.h"
-#endif   // ZIP_SUPPORT
+#endif   // VCT_SUPPORT
+#if defined(GZ_SUPPORT)
+#include "filamgz.h"
+#endif   // GZ_SUPPORT
 #include "tabdos.h"
 #include "valblk.h"
 #include "tabmul.h"
@@ -294,7 +296,7 @@ int TABDEF::GetColCatInfo(PGLOBAL g)
 				nlg+= nof;
       case TAB_DIR:
       case TAB_XML:
-        poff= loff + 1;
+				poff= loff + (pcf->Flags & U_VIRTUAL ? 0 : 1);
         break;
       case TAB_INI:
       case TAB_MAC:
@@ -440,7 +442,11 @@ int TABDEF::GetColCatInfo(PGLOBAL g)
       } // endswitch tc
 
 		// lrecl must be at least recln to avoid buffer overflow
-		recln= MY_MAX(recln, Hc->GetIntegerOption("Lrecl"));
+		if (trace)
+			htrc("Lrecl: Calculated=%d defined=%d\n", 
+			  recln, Hc->GetIntegerOption("Lrecl"));
+
+		recln = MY_MAX(recln, Hc->GetIntegerOption("Lrecl"));
 		Hc->SetIntegerOption("Lrecl", recln);
 		((PDOSDEF)this)->SetLrecl(recln);
 		} // endif Lrecl
@@ -514,10 +520,11 @@ PTABDEF OEMDEF::GetXdef(PGLOBAL g)
     } // endif getdef
 #else   // !__WIN__
   const char *error = NULL;
-  Dl_info dl_info;
     
 #if 0  // Don't know what all this stuff does
-  // The OEM lib must retrieve exported CONNECT variables
+	Dl_info dl_info;
+
+	// The OEM lib must retrieve exported CONNECT variables
   if (dladdr(&connect_hton, &dl_info)) {
     if (dlopen(dl_info.dli_fname, RTLD_NOLOAD | RTLD_NOW | RTLD_GLOBAL) == 0) {
       error = dlerror();
@@ -658,15 +665,15 @@ PTDB OEMDEF::GetTable(PGLOBAL g, MODE mode)
   /*********************************************************************/
   if (!((PTDBDOS)tdbp)->GetTxfp()) {
     if (cmpr) {
-#if defined(ZIP_SUPPORT)
+#if defined(GZ_SUPPORT)
       if (cmpr == 1)
-        txfp = new(g) ZIPFAM(defp);
+        txfp = new(g) GZFAM(defp);
       else
         txfp = new(g) ZLBFAM(defp);
-#else   // !ZIP_SUPPORT
+#else   // !GZ_SUPPORT
       strcpy(g->Message, "Compress not supported");
       return NULL;
-#endif  // !ZIP_SUPPORT
+#endif  // !GZ_SUPPORT
     } else if (rfm == RECFM_VAR) {
       if (map)
         txfp = new(g) MAPFAM(defp);
@@ -678,16 +685,19 @@ PTDB OEMDEF::GetTable(PGLOBAL g, MODE mode)
         txfp = new(g) MPXFAM(defp);
       else
         txfp = new(g) FIXFAM(defp);
-
     } else if (rfm == RECFM_VCT) {
-      assert (Pxdef->GetDefType() == TYPE_AM_VCT);
+#if defined(VCT_SUPPORT)
+			assert(Pxdef->GetDefType() == TYPE_AM_VCT);
 
       if (map)
         txfp = new(g) VCMFAM((PVCTDEF)defp);
       else
         txfp = new(g) VCTFAM((PVCTDEF)defp);
-
-    } // endif's
+#else   // !VCT_SUPPORT
+			strcpy(g->Message, "VCT no more supported");
+			return NULL;
+#endif  // !VCT_SUPPORT
+		} // endif's
 
     ((PTDBDOS)tdbp)->SetTxfp(txfp);
     } // endif Txfp

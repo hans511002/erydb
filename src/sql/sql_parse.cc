@@ -102,7 +102,7 @@ Copyright (c) 2016, MariaDB Corporation
 #include "sql_bootstrap.h"
 #include "sql_class.h"
 
-#include "my_json_writer.h" 
+#include "my_json_writer.h"
 
 #define FLAGSTR(V,F) ((V)&(F)?#F" ":"")
 
@@ -118,16 +118,16 @@ static void wsrep_mysql_parse(THD *thd, char *rawbuf, uint length,
                               Parser_state *parser_state);
 
 /**
- * EryDB Functions 
+ * EryDB Functions
  */
 // EryDB: vtable processing
-int erydb_vtable_process(THD* thd, Statement* stmt = NULL);
+int erydb_vtable_process(THD* thd, ulonglong old_optimizer_switch, Statement* statement = NULL);
 
 // EryDB: Execute a sql statement about a vtable
 int erydb_parse_vtable(THD* thd, String& vquery, THD::erydb_state vtable_state);
 
-// EryDB: for vtable parsing use. String in quotes is converted to upper case, all other chars are 
-// converted to lower case. 
+// EryDB: for vtable parsing use. String in quotes is converted to upper case, all other chars are
+// converted to lower case.
 static void erydb_to_lower(char* str);
 
 // EryDB replace \t, \n to space.
@@ -309,6 +309,7 @@ void init_update_queries(void)
   server_command_flags[COM_STMT_RESET]= CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_EXECUTE]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_SEND_LONG_DATA]= CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_REGISTER_SLAVE]= CF_SKIP_WSREP_CHECK;
 
   /* Initialize the sql command flags array. */
   memset(sql_command_flags, 0, sizeof(sql_command_flags));
@@ -550,6 +551,7 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_INSERT_SELECT]|=   CF_PREOPEN_TMP_TABLES;
   sql_command_flags[SQLCOM_DELETE]|=          CF_PREOPEN_TMP_TABLES;
   sql_command_flags[SQLCOM_DELETE_MULTI]|=    CF_PREOPEN_TMP_TABLES;
+  sql_command_flags[SQLCOM_RENAME_TABLE]|=    CF_PREOPEN_TMP_TABLES;
   sql_command_flags[SQLCOM_REPLACE_SELECT]|=  CF_PREOPEN_TMP_TABLES;
   sql_command_flags[SQLCOM_SELECT]|=          CF_PREOPEN_TMP_TABLES;
   sql_command_flags[SQLCOM_SET_OPTION]|=      CF_PREOPEN_TMP_TABLES;
@@ -634,7 +636,7 @@ bool sqlcom_can_generate_row_events(const THD *thd)
   return (sql_command_flags[thd->lex->sql_command] &
           CF_CAN_GENERATE_ROW_EVENTS);
 }
- 
+
 bool is_update_query(enum enum_sql_command command)
 {
   DBUG_ASSERT(command <= SQLCOM_END);
@@ -897,7 +899,7 @@ void free_items(Item *item)
 */
 void cleanup_items(Item *item)
 {
-  DBUG_ENTER("cleanup_items");  
+  DBUG_ENTER("cleanup_items");
   for (; item ; item=item->next)
     item->cleanup();
   DBUG_VOID_RETURN;
@@ -975,7 +977,7 @@ bool do_command(THD *thd)
 
 
   /*
-    XXX: this code is here only to clear possible errors of init_connect. 
+    XXX: this code is here only to clear possible errors of init_connect.
     Consider moving to init_connect() instead.
   */
   thd->clear_error();				// Clear error message
@@ -1205,10 +1207,10 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   if (lex->sql_command == SQLCOM_UPDATE_MULTI)
     DBUG_RETURN(FALSE);
 
-  const my_bool create_temp_tables= 
+  const my_bool create_temp_tables=
     (lex->sql_command == SQLCOM_CREATE_TABLE) && lex->tmp_table();
 
-  const my_bool drop_temp_tables= 
+  const my_bool drop_temp_tables=
     (lex->sql_command == SQLCOM_DROP_TABLE) && lex->tmp_table();
 
   const my_bool update_real_tables=
@@ -1304,7 +1306,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   MYSQL_COMMAND_START(thd->thread_id, command,
                       &thd->security_ctx->priv_user[0],
                       (char *) thd->security_ctx->host_or_ip);
-  
+
   DBUG_EXECUTE_IF("crash_dispatch_command_before",
                   { DBUG_PRINT("crash_dispatch_command_before", ("now"));
                     DBUG_ABORT(); });
@@ -1489,6 +1491,8 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                       &thd->security_ctx->priv_user[0],
                       (char *) thd->security_ctx->host_or_ip);
     char *packet_end= thd->query() + thd->query_length();
+    ulonglong old_optimizer_switch = thd->variables.optimizer_switch;
+
     general_log_write(thd, command, thd->query(), thd->query_length());
     DBUG_PRINT("query",("%-.4096s",thd->query()));
 #if defined(ENABLED_PROFILING)
@@ -1502,7 +1506,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       break;
 
 	// EryDB: Do EryDB Processing.
-	if (erydb_vtable_process(thd))   // retuns non 0 when not EryDB query
+	if (erydb_vtable_process(thd, old_optimizer_switch, NULL))   // returns non 0 when not EryDB query
 	{
 	  thd->set_row_count_func(0); //Bug 5315
 	  thd->erydb_vtable.vtable_state = THD::ERYDB_DISABLE_VTABLE;
@@ -1515,6 +1519,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 	  thd->erydb_vtable.isEryDBDML = false;
 	  thd->erydb_vtable.hasEryDBTable = false;
 	}
+
+	thd->variables.optimizer_switch = old_optimizer_switch;
+
 
     while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
            ! thd->is_error())
@@ -1768,7 +1775,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       during execution of COM_REFRESH.
     */
     lex_start(thd);
-    
+
     status_var_increment(thd->status_var.com_stat[SQLCOM_FLUSH]);
     ulonglong options= (ulonglong) (uchar) packet[0];
     if (trans_commit_implicit(thd))
@@ -1892,7 +1899,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       break;
     general_log_print(thd, command, NullS);
     mysqld_list_processes(thd,
-			  thd->security_ctx->master_access & PROCESS_ACL ? 
+			  thd->security_ctx->master_access & PROCESS_ACL ?
 			  NullS : thd->security_ctx->priv_user, 0);
     break;
   case COM_PROCESS_KILL:
@@ -1982,8 +1989,8 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   thd->update_all_stats();
 
   // @EryDB
-  if (thd->query() && thd->erydb_vtable.vtable_state != THD::ERYDB_INIT 
-  	  && thd->erydb_vtable.vtable_state != THD::ERYDB_DISABLE_VTABLE 
+  if (thd->query() && thd->erydb_vtable.vtable_state != THD::ERYDB_INIT
+  	  && thd->erydb_vtable.vtable_state != THD::ERYDB_DISABLE_VTABLE
 	  && !(thd->lex->sql_command == SQLCOM_UPDATE_MULTI) && !(thd->lex->sql_command == SQLCOM_UPDATE)
 	  && !(thd->lex->sql_command == SQLCOM_DELETE_MULTI) && !(thd->lex->sql_command == SQLCOM_DELETE))
   {
@@ -2046,12 +2053,12 @@ void log_slow_statement(THD *thd)
     goto end;                           // Don't set time for sub stmt
 
 
-  /* Follow the slow log filter configuration. */ 
+  /* Follow the slow log filter configuration. */
   if (!thd->enable_slow_log || !global_system_variables.sql_log_slow ||
       (thd->variables.log_slow_filter
         && !(thd->variables.log_slow_filter & thd->query_plan_flags)))
-    goto end; 
- 
+    goto end;
+
   if (((thd->server_status & SERVER_QUERY_WAS_SLOW) ||
        ((thd->server_status &
          (SERVER_QUERY_NO_INDEX_USED | SERVER_QUERY_NO_GOOD_INDEX_USED)) &&
@@ -2063,13 +2070,13 @@ void log_slow_statement(THD *thd)
     /*
       If rate limiting of slow log writes is enabled, decide whether to log
       this query to the log or not.
-    */ 
+    */
     if (thd->variables.log_slow_rate_limit > 1 &&
         (global_query_id % thd->variables.log_slow_rate_limit) != 0)
       goto end;
 
     THD_STAGE_INFO(thd, stage_logging_slow_query);
-    slow_log_print(thd, thd->query(), thd->query_length(), 
+    slow_log_print(thd, thd->query(), thd->query_length(),
                    thd->utime_after_query);
   }
 
@@ -2174,7 +2181,7 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
 #endif
   }
   case SCH_PROFILES:
-    /* 
+    /*
       Mark this current profiling record to be discarded.  We don't
       wish to have SHOW commands show up in profiling.
     */
@@ -2185,7 +2192,7 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
   default:
     break;
   }
-  
+
   SELECT_LEX *select_lex= lex->current_select;
   if (make_schema_select(thd, select_lex, get_schema_table(schema_table_idx)))
     DBUG_RETURN(1);
@@ -2225,7 +2232,7 @@ bool alloc_query(THD *thd, const char *packet, uint packet_length)
     pos--;
     packet_length--;
   }
-  /* We must allocate some extra memory for query cache 
+  /* We must allocate some extra memory for query cache
 
     The query buffer layout is:
        buffer :==
@@ -2248,7 +2255,7 @@ bool alloc_query(THD *thd, const char *packet, uint packet_length)
     execution.  We might need to reallocate the 'query' buffer
   */
   int2store(query + packet_length + 1, thd->db_length);
-    
+
   thd->set_query(query, packet_length);
 
   /* Reclaim some memory */
@@ -2621,7 +2628,7 @@ mysql_execute_command(THD *thd)
   DBUG_ASSERT(! thd->transaction_rollback_request || thd->in_sub_stmt);
   /*
     In many cases first table of main SELECT_LEX have special meaning =>
-    check that it is first table in global list and relink it first in 
+    check that it is first table in global list and relink it first in
     queries_tables list if it is necessary (we need such relinking only
     for queries with subqueries in select list, in this case tables of
     subqueries will go to global list first)
@@ -2667,7 +2674,7 @@ mysql_execute_command(THD *thd)
         before checking slave filter rules.
       */
       add_table_for_trigger(thd, thd->lex->spname, 1, &all_tables);
-      
+
       if (!all_tables)
       {
         /*
@@ -2723,11 +2730,11 @@ mysql_execute_command(THD *thd)
         my_message(ER_SLAVE_IGNORED_TABLE, ER_THD(thd, ER_SLAVE_IGNORED_TABLE),
                    MYF(0));
       }
-      
+
       for (table=all_tables; table; table=table->next_global)
         table->updating= TRUE;
     }
-    
+
     /*
       Check if statment should be skipped because of slave filtering
       rules
@@ -2752,7 +2759,7 @@ mysql_execute_command(THD *thd)
                  MYF(0));
       DBUG_RETURN(0);
     }
-    /* 
+    /*
        Execute deferred events first
     */
     if (slave_execute_deferred_events(thd))
@@ -2774,7 +2781,7 @@ mysql_execute_command(THD *thd)
   } /* endif unlikely slave */
 #endif
 #ifdef WITH_WSREP
-  if (WSREP(thd))
+  if  (wsrep && WSREP(thd))
   {
     /*
       change LOCK TABLE WRITE to transaction
@@ -2800,13 +2807,18 @@ mysql_execute_command(THD *thd)
     }
 
     /*
-      Bail out if DB snapshot has not been installed. We however, allow SET,
-      SHOW and SELECT queries (only if wsrep_dirty_reads is set).
+      Bail out if DB snapshot has not been installed. SET and SHOW commands,
+      however, are always allowed.
+      Select query is also allowed if it does not access any table.
+      We additionally allow all other commands that do not change data in
+      case wsrep_dirty_reads is enabled.
     */
     if (lex->sql_command != SQLCOM_SET_OPTION  &&
         !wsrep_is_show_query(lex->sql_command) &&
         !(thd->variables.wsrep_dirty_reads     &&
-          lex->sql_command == SQLCOM_SELECT)   &&
+          !is_update_query(lex->sql_command))  &&
+        !(lex->sql_command == SQLCOM_SELECT    &&
+          !all_tables)                         &&
         !wsrep_node_is_ready(thd))
       goto error;
   }
@@ -3062,7 +3074,7 @@ mysql_execute_command(THD *thd)
 
     Item **it= lex->value_list.head_ref();
     if (!(*it)->basic_const_item() ||
-        (!(*it)->fixed && (*it)->fix_fields(lex->thd, it)) || 
+        (!(*it)->fixed && (*it)->fix_fields(lex->thd, it)) ||
         (*it)->check_cols(1))
     {
       my_message(ER_SET_CONSTANTS_ONLY, ER_THD(thd, ER_SET_CONSTANTS_ONLY),
@@ -3092,6 +3104,10 @@ mysql_execute_command(THD *thd)
   case SQLCOM_SHOW_STORAGE_ENGINES:
   case SQLCOM_SHOW_PROFILE:
   {
+#ifdef WITH_WSREP
+    DBUG_ASSERT(thd->wsrep_exec_mode != REPL_RECV);
+#endif /* WITH_WSREP */
+
     thd->status_var.last_query_cost= 0.0;
 
     /*
@@ -3263,7 +3279,7 @@ mysql_execute_command(THD *thd)
     if (mi == NULL)
     {
       /* New replication created */
-      mi= new Master_info(&lex_mi->connection_name, relay_log_recovery); 
+      mi= new Master_info(&lex_mi->connection_name, relay_log_recovery);
       if (!mi || mi->error())
       {
         delete mi;
@@ -3414,12 +3430,6 @@ mysql_execute_command(THD *thd)
     }
 
     /*
-      For CREATE TABLE we should not open the table even if it exists.
-      If the table exists, we should either not create it or replace it
-    */
-    lex->query_tables->open_strategy= TABLE_LIST::OPEN_STUB;
-
-    /*
       If we are a slave, we should add OR REPLACE if we don't have
       IF EXISTS. This will help a slave to recover from
       CREATE TABLE OR EXISTS failures by dropping the table and
@@ -3487,17 +3497,17 @@ mysql_execute_command(THD *thd)
           If it differs from number of NAME_CONST substitution applied,
           we may have a SOME_FUNC(NAME_CONST()) in the SELECT list,
           that may cause a problem with binary log (see BUG#35383),
-          raise a warning. 
+          raise a warning.
         */
         if (splocal_refs != thd->query_name_consts)
-          push_warning(thd, 
+          push_warning(thd,
                        Sql_condition::WARN_LEVEL_WARN,
                        ER_UNKNOWN_ERROR,
 "Invoked routine ran a statement that may cause problems with "
 "binary log, see 'NAME_CONST issues' in 'Binary Logging of Stored Programs' "
 "section of the manual.");
       }
-      
+
       select_lex->options|= SELECT_NO_UNLOCK;
       unit->set_limit(select_lex);
 
@@ -3750,7 +3760,7 @@ end_with_restore_list:
     }
     mysql_mutex_lock(&LOCK_active_mi);
     if (master_info_index && !master_info_index->stop_all_slaves(thd))
-      my_ok(thd);      
+      my_ok(thd);
     mysql_mutex_unlock(&LOCK_active_mi);
     break;
   }
@@ -4133,7 +4143,7 @@ end_with_restore_list:
       /* Skip first table, which is the table we are inserting in */
       TABLE_LIST *second_table= first_table->next_local;
       select_lex->table_list.first= second_table;
-      select_lex->context.table_list= 
+      select_lex->context.table_list=
         select_lex->context.first_name_resolution_table= second_table;
       res= mysql_insert_select_prepare(thd);
       if (!res && (sel_result= new (thd->mem_root) select_insert(thd,
@@ -4221,7 +4231,7 @@ end_with_restore_list:
       /* This is DELETE ... RETURNING.  It will return output to the client */
       if (thd->lex->analyze_stmt)
       {
-        /* 
+        /*
           Actually, it is ANALYZE .. DELETE .. RETURNING. We need to produce
           output and then discard it.
         */
@@ -4238,7 +4248,7 @@ end_with_restore_list:
       }
     }
 
-    res = mysql_delete(thd, all_tables, 
+    res = mysql_delete(thd, all_tables,
                        select_lex->where, &select_lex->order_list,
                        unit->select_limit_cnt, select_lex->options,
                        sel_result);
@@ -4363,7 +4373,7 @@ end_with_restore_list:
     if (thd->slave_thread && !thd->slave_expected_error &&
         slave_ddl_exec_mode_options == SLAVE_EXEC_MODE_IDEMPOTENT)
       lex->create_info.set(DDL_options_st::OPT_IF_EXISTS);
-    
+
     /* DDL and binlog write order are protected by metadata locks. */
     res= mysql_rm_table(thd, first_table, lex->if_exists(), lex->tmp_table());
     break;
@@ -4568,7 +4578,7 @@ end_with_restore_list:
     /*
       If in a slave thread :
       DROP DATABASE DB may not be preceded by USE DB.
-      For that reason, maybe db_ok() in sql/slave.cc did not check the 
+      For that reason, maybe db_ok() in sql/slave.cc did not check the
       do_db/ignore_db. And as this query involves no tables, tables_ok()
       above was not called. So we have to check rules again here.
     */
@@ -4839,7 +4849,7 @@ end_with_restore_list:
                               ER_THD(thd, ER_WARN_HOSTNAME_WONT_WORK));
 
         /*
-          GRANT/REVOKE PROXY has the target user as a first entry in the list. 
+          GRANT/REVOKE PROXY has the target user as a first entry in the list.
          */
         if (lex->type == TYPE_ENUM_PROXY && first_user)
         {
@@ -4850,7 +4860,7 @@ end_with_restore_list:
           if (acl_check_proxy_grant_access (thd, user->host.str, user->user.str,
                                         lex->grant & GRANT_ACL))
             goto error;
-        } 
+        }
       }
     }
     if (first_table)
@@ -4858,7 +4868,7 @@ end_with_restore_list:
       if (lex->type == TYPE_ENUM_PROCEDURE ||
           lex->type == TYPE_ENUM_FUNCTION)
       {
-        uint grants= lex->all_privileges 
+        uint grants= lex->all_privileges
 		   ? (PROC_ACLS & ~GRANT_ACL) | (lex->grant & GRANT_ACL)
 		   : lex->grant;
         if (check_grant_routine(thd, grants | GRANT_ACL, all_tables,
@@ -4867,7 +4877,7 @@ end_with_restore_list:
         /* Conditionally writes to binlog */
         WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL)
         res= mysql_routine_grant(thd, all_tables,
-                                 lex->type == TYPE_ENUM_PROCEDURE, 
+                                 lex->type == TYPE_ENUM_PROCEDURE,
                                  lex->users_list, grants,
                                  lex->sql_command == SQLCOM_REVOKE, TRUE);
         if (!res)
@@ -5029,26 +5039,26 @@ end_with_restore_list:
       */
 
       if (write_to_binlog > 0)  // we should write
-      { 
+      {
         if (!lex->no_write_to_binlog)
           res= write_bin_log(thd, FALSE, thd->query(), thd->query_length());
-      } else if (write_to_binlog < 0) 
+      } else if (write_to_binlog < 0)
       {
-        /* 
-           We should not write, but rather report error because 
-           reload_acl_and_cache binlog interactions failed 
+        /*
+           We should not write, but rather report error because
+           reload_acl_and_cache binlog interactions failed
          */
         res= 1;
-      } 
+      }
 
       if (!res)
         my_ok(thd);
-    } 
+    }
 #ifdef HAVE_REPLICATION
     if (lex->type & REFRESH_READ_LOCK)
       rpl_unpause_after_ftwrl(thd);
 #endif
-    
+
     break;
   }
   case SQLCOM_KILL:
@@ -5315,16 +5325,16 @@ end_with_restore_list:
       DBUG_ASSERT(thd->transaction.stmt.is_empty());
       close_thread_tables(thd);
       /*
-        Check if the definer exists on slave, 
+        Check if the definer exists on slave,
         then use definer privilege to insert routine privileges to mysql.procs_priv.
 
-        For current user of SQL thread has GLOBAL_ACL privilege, 
-        which doesn't any check routine privileges, 
+        For current user of SQL thread has GLOBAL_ACL privilege,
+        which doesn't any check routine privileges,
         so no routine privilege record  will insert into mysql.procs_priv.
       */
       if (thd->slave_thread && is_acl_user(definer->host.str, definer->user.str))
       {
-        security_context.change_security_context(thd, 
+        security_context.change_security_context(thd,
                                                  &thd->lex->definer->user,
                                                  &thd->lex->definer->host,
                                                  &thd->lex->sphead->m_db,
@@ -5346,7 +5356,7 @@ end_with_restore_list:
 
       /*
         Restore current user with GLOBAL_ACL privilege of SQL thread
-      */ 
+      */
       if (restore_backup_context)
       {
         DBUG_ASSERT(thd->slave_thread == 1);
@@ -5377,8 +5387,8 @@ end_with_restore_list:
         goto error;
 
       /*
-        By this moment all needed SPs should be in cache so no need to look 
-        into DB. 
+        By this moment all needed SPs should be in cache so no need to look
+        into DB.
       */
       if (!(sp= sp_find_routine(thd, TYPE_ENUM_PROCEDURE, lex->spname,
                                 &thd->sp_proc_cache, TRUE)))
@@ -5617,11 +5627,8 @@ end_with_restore_list:
     }
   case SQLCOM_SHOW_CREATE_TRIGGER:
     {
-      if (lex->spname->m_name.length > NAME_LEN)
-      {
-        my_error(ER_TOO_LONG_IDENT, MYF(0), lex->spname->m_name.str);
+      if (check_ident_length(&lex->spname->m_name))
         goto error;
-      }
 
 #ifdef WITH_WSREP
       if (WSREP_CLIENT(thd) && wsrep_sync_wait(thd)) goto error;
@@ -5977,21 +5984,21 @@ static bool execute_sqlcom_select(THD *thd, TABLE_LIST *all_tables)
       if (!(result= new (thd->mem_root) select_send(thd)))
         return 1;                               /* purecov: inspected */
       thd->send_explain_fields(result, lex->describe, lex->analyze_stmt);
-        
+
       /*
         This will call optimize() for all parts of query. The query plan is
         printed out below.
       */
       res= mysql_explain_union(thd, &lex->unit, result);
-      
+
       /* Print EXPLAIN only if we don't have an error */
       if (!res)
       {
-        /* 
+        /*
           Do like the original select_describe did: remove OFFSET from the
           top-level LIMIT
-        */        
-        result->reset_offset_limit(); 
+        */
+        result->reset_offset_limit();
         if (lex->explain_json)
         {
           lex->explain->print_explain_json(result, lex->analyze_stmt);
@@ -6029,7 +6036,7 @@ static bool execute_sqlcom_select(THD *thd, TABLE_LIST *all_tables)
       {
         if (result && result->is_result_interceptor())
           ((select_result_interceptor*)result)->disable_my_ok_calls();
-        else 
+        else
         {
           DBUG_ASSERT(thd->protocol);
           result= new (thd->mem_root) select_send_analyze(thd);
@@ -6378,7 +6385,7 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     1   access denied, error is sent to client
 */
 
-bool check_single_table_access(THD *thd, ulong privilege, 
+bool check_single_table_access(THD *thd, ulong privilege,
                                TABLE_LIST *all_tables, bool no_errors)
 {
   Security_context * backup_ctx= thd->security_ctx;
@@ -6647,11 +6654,11 @@ check_routine_access(THD *thd, ulong want_access,char *db, char *name,
 		     bool is_proc, bool no_errors)
 {
   TABLE_LIST tables[1];
-  
+
   bzero((char *)tables, sizeof(TABLE_LIST));
   tables->db= db;
   tables->table_name= tables->alias= name;
-  
+
   /*
     The following test is just a shortcut for check_access() (to avoid
     calculating db_access) under the assumption that it's common to
@@ -6672,7 +6679,7 @@ check_routine_access(THD *thd, ulong want_access,char *db, char *name,
                         &tables->grant.m_internal,
                         0, no_errors))
     return TRUE;
-  
+
   return check_grant_routine(thd, want_access, tables, is_proc, no_errors);
 }
 
@@ -6945,6 +6952,7 @@ bool check_stack_overrun(THD *thd, long margin,
   if ((stack_used=used_stack(thd->thread_stack,(char*) &stack_used)) >=
       (long) (my_thread_stack_size - margin))
   {
+    thd->is_fatal_error= 1;
     /*
       Do not use stack for the message buffer to ensure correct
       behaviour in cases we have close to no stack left.
@@ -7033,10 +7041,13 @@ void THD::reset_for_next_command()
   /*
     Autoinc variables should be adjusted only for locally executed
     transactions. Appliers and replayers are either processing ROW
-    events or get autoinc variable values from Query_log_event.
+    events or get autoinc variable values from Query_log_event and
+    mysql slave may be processing STATEMENT format events, but he should
+    use autoinc values passed in binlog events, not the values forced by
+    the cluster.
   */
   if (WSREP(thd) && thd->wsrep_exec_mode == LOCAL_STATE &&
-      wsrep_auto_increment_control)
+      !thd->slave_thread && wsrep_auto_increment_control)
   {
     thd->variables.auto_increment_offset=
       global_system_variables.auto_increment_offset;
@@ -7198,10 +7209,10 @@ mysql_new_select(LEX *lex, bool move_down)
       DBUG_RETURN(1);
     }
     select_lex->include_neighbour(lex->current_select);
-    SELECT_LEX_UNIT *unit= select_lex->master_unit();                              
+    SELECT_LEX_UNIT *unit= select_lex->master_unit();
     if (!unit->fake_select_lex && unit->add_fake_select_lex(lex->thd))
       DBUG_RETURN(1);
-    select_lex->context.outer_context= 
+    select_lex->context.outer_context=
                 unit->first_select()->context.outer_context;
   }
 
@@ -7311,7 +7322,7 @@ static void wsrep_mysql_parse(THD *thd, char *rawbuf, uint length,
             thd->lex->sql_command != SQLCOM_SELECT  &&
             (thd->wsrep_retry_counter < thd->variables.wsrep_retry_autocommit))
         {
-          WSREP_DEBUG("wsrep retrying AC query: %s", 
+          WSREP_DEBUG("wsrep retrying AC query: %s",
                       (thd->query()) ? thd->query() : "void");
 
 	  /* Performance Schema Interface instrumentation, end */
@@ -7328,10 +7339,10 @@ static void wsrep_mysql_parse(THD *thd, char *rawbuf, uint length,
         }
         else
         {
-          WSREP_DEBUG("%s, thd: %lu is_AC: %d, retry: %lu - %lu SQL: %s", 
-                      (thd->wsrep_conflict_state == ABORTED) ? 
+          WSREP_DEBUG("%s, thd: %lu is_AC: %d, retry: %lu - %lu SQL: %s",
+                      (thd->wsrep_conflict_state == ABORTED) ?
                       "BF Aborted" : "cert failure",
-                      thd->thread_id, is_autocommit, thd->wsrep_retry_counter, 
+                      thd->thread_id, is_autocommit, thd->wsrep_retry_counter,
                       thd->variables.wsrep_retry_autocommit, thd->query());
           my_error(ER_LOCK_DEADLOCK, MYF(0), "wsrep aborted transaction");
           thd->killed= NOT_KILLED;
@@ -7444,10 +7455,9 @@ void mysql_parse(THD *thd, char *rawbuf, uint length,
             Note that we don't need LOCK_thread_count to modify query_length.
           */
           if (found_semicolon && (ulong) (found_semicolon - thd->query()))
-            thd->set_query_inner(thd->query(),
-                                 (uint32) (found_semicolon -
-                                           thd->query() - 1),
-                                 thd->charset());
+            thd->set_query(thd->query(),
+                           (uint32) (found_semicolon - thd->query() - 1),
+                           thd->charset());
           /* Actually execute the query */
           if (found_semicolon)
           {
@@ -7580,7 +7590,7 @@ bool add_to_list(THD *thd, SQL_I_List<ORDER> &list, Item *item,bool asc, uint nu
   order->free_me=0;
   order->used=0;
   order->counter_used= 0;
-  order->fast_field_copier_setup= 0; 
+  order->fast_field_copier_setup= 0;
   // Added by EryDB
   if (nulls == 2)
     order->nulls = (order->asc ? 1 : 0);
@@ -7678,7 +7688,7 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
     if (ptr->db_length && ptr->db != any_db)
       ptr->db_length= my_casedn_str(files_charset_info, ptr->db);
   }
-      
+
   ptr->table_name=table->table.str;
   ptr->table_name_length=table->table.length;
   ptr->lock_type=   lock_type;
@@ -7703,8 +7713,8 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
     }
     schema_table= find_schema_table(thd, ptr->table_name);
     if (!schema_table ||
-        (schema_table->hidden && 
-         ((sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0 || 
+        (schema_table->hidden &&
+         ((sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0 ||
           /*
             this check is used for show columns|keys from I_S hidden table
           */
@@ -8037,13 +8047,13 @@ void st_select_lex::set_lock_for_tables(thr_lock_type lock_type)
     This object is created for any union construct containing a union
     operation and also for any single select union construct of the form
     @verbatim
-    (SELECT ... ORDER BY order_list [LIMIT n]) ORDER BY ... 
+    (SELECT ... ORDER BY order_list [LIMIT n]) ORDER BY ...
     @endvarbatim
     or of the form
     @varbatim
     (SELECT ... ORDER BY LIMIT n) ORDER BY ...
     @endvarbatim
-  
+
   @param thd_arg		   thread handle
 
   @note
@@ -8064,7 +8074,7 @@ bool st_select_lex_unit::add_fake_select_lex(THD *thd_arg)
 
   if (!(fake_select_lex= new (thd_arg->mem_root) SELECT_LEX()))
       DBUG_RETURN(1);
-  fake_select_lex->include_standalone(this, 
+  fake_select_lex->include_standalone(this,
                                       (SELECT_LEX_NODE**)&fake_select_lex);
   fake_select_lex->select_number= INT_MAX;
   fake_select_lex->parent_lex= thd_arg->lex; /* Used in init_query. */
@@ -8075,19 +8085,19 @@ bool st_select_lex_unit::add_fake_select_lex(THD *thd_arg)
   fake_select_lex->context.outer_context=first_sl->context.outer_context;
   /* allow item list resolving in fake select for ORDER BY */
   fake_select_lex->context.resolve_in_select_list= TRUE;
-  fake_select_lex->context.select_lex= fake_select_lex;  
+  fake_select_lex->context.select_lex= fake_select_lex;
 
   fake_select_lex->nest_level_base= first_select()->nest_level_base;
   fake_select_lex->nest_level=first_select()->nest_level;
 
   if (!is_union())
   {
-    /* 
-      This works only for 
+    /*
+      This works only for
       (SELECT ... ORDER BY list [LIMIT n]) ORDER BY order_list [LIMIT m],
       (SELECT ... LIMIT n) ORDER BY order_list [LIMIT m]
       just before the parser starts processing order_list
-    */ 
+    */
     fake_select_lex->no_table_names_allowed= 1;
     thd_arg->lex->current_select= fake_select_lex;
   }
@@ -8953,7 +8963,7 @@ bool create_table_precheck(THD *thd, TABLE_LIST *tables,
   /* CREATE OR REPLACE on not temporary tables require DROP_ACL */
   if (lex->create_info.or_replace() && !lex->tmp_table())
     want_priv|= DROP_ACL;
-                          
+
   if (check_access(thd, want_priv, create_table->db,
                    &create_table->grant.privilege,
                    &create_table->grant.m_internal,
@@ -8981,7 +8991,7 @@ bool create_table_precheck(THD *thd, TABLE_LIST *tables,
           In other words, once a merge table is created, the privileges of
           the underlying tables can be revoked, but the user will still have
           access to the merge table (provided that the user has privileges on
-          the merge table itself). 
+          the merge table itself).
 
         - Temporary tables shadow base tables.
 
@@ -9023,12 +9033,6 @@ bool create_table_precheck(THD *thd, TABLE_LIST *tables,
 
   if (check_fk_parent_table_access(thd, &lex->create_info, &lex->alter_info, create_table->db))
     goto err;
-
-  /*
-    For CREATE TABLE we should not open the table even if it exists.
-    If the table exists, we should either not create it or replace it
-  */
-  lex->query_tables->open_strategy= TABLE_LIST::OPEN_STUB;
 
   error= FALSE;
 
@@ -9102,11 +9106,11 @@ Item *negate_expression(THD *thd, Item *expr)
 /**
   Set the specified definer to the default value, which is the
   current user in the thread.
- 
+
   @param[in]  thd       thread handler
   @param[out] definer   definer
 */
- 
+
 void get_default_definer(THD *thd, LEX_USER *definer, bool role)
 {
   const Security_context *sctx= thd->security_ctx;
@@ -9256,6 +9260,18 @@ bool check_string_char_length(LEX_STRING *str, uint err_msg,
   return TRUE;
 }
 
+
+bool check_ident_length(LEX_STRING *ident)
+{
+  if (check_string_char_length(ident, 0, NAME_CHAR_LEN, system_charset_info, 1))
+  {
+    my_error(ER_TOO_LONG_IDENT, MYF(0), ident->str);
+    return 1;
+  }
+  return 0;
+}
+
+
 C_MODE_START
 
 /*
@@ -9366,7 +9382,7 @@ bool check_host_name(LEX_STRING *str)
   {
     if (*name == '@')
     {
-      my_printf_error(ER_UNKNOWN_ERROR, 
+      my_printf_error(ER_UNKNOWN_ERROR,
                       "Malformed hostname (illegal symbol: '%c')", MYF(0),
                       *name);
       return TRUE;
@@ -9498,7 +9514,7 @@ bool parse_sql(THD *thd, Parser_state *parser_state,
 
   If "cl" is NULL (e.g. when COLLATE clause is not specified),
   then simply "cs" is returned.
-  
+
   @return Error status.
     @retval NULL, if "cl" is not applicable to "cs".
     @retval pointer to merged CHARSET_INFO on success.
@@ -9539,7 +9555,7 @@ CHARSET_INFO *find_bin_collation(CHARSET_INFO *cs)
  * EryDB Vtable Processing
  */
 
-// for vtable parsing use. String in quotes is converted 
+// for vtable parsing use. String in quotes is converted
 static void erydb_to_lower(char* str)
 {
 	bool inquote = false;
@@ -9550,7 +9566,7 @@ static void erydb_to_lower(char* str)
 		if (str[i] == '`' || str[i] == '\'' || str[i] == '"')
 		{
 			// @bug3935. more careful to '"' cases.
-			if (inquote && quote == str[i]) 
+			if (inquote && quote == str[i])
 			{
 				inquote = false;
 			}
@@ -9563,7 +9579,7 @@ static void erydb_to_lower(char* str)
 		}
 		if (inquote)
 			str[i] = toupper(str[i]);
-		else 
+		else
 			str[i] = tolower(str[i]);
 	}
 }
@@ -9572,16 +9588,52 @@ static std::string erydb_cleanQuery(char* str)
 {
 	DBUG_ENTER("erydb_cleanQuery");
 	bool inquote = false;
+	bool incomment = false;
 	std::string temp;
 	char quote = 0;
 	uint length = strlen(str);
 	for (uint i = 0; i < length; i++)
 	{
+		/* MCOL-256
+		* Strip the comments out as well otherwise temp table creation
+		* uses a bad query
+		*/
+		if (incomment)
+		{
+			if (str[i] == '\n')
+			{
+				incomment = false;
+			}
+			else
+			{
+				continue;
+			}
+		}
+		if (!inquote)
+		{
+			if ((i+2 <= length) && (str[i] == '-') && (str[i+1] == '-'))
+			{
+				/* MCOL-284
+				* Need whitespace after double dash
+				*/
+				if (str[i+2] == ' ' || str[i+2] == '\t')
+				{
+					incomment = true;
+					continue;
+				}
+			}
+			if (str[i] == '#')
+			{
+				incomment = true;
+				continue;
+			}
+		}
+
 		temp.append(1, str[i]);
 		// @bug3935.
 		if (str[i] == '`' || str[i] == '\'' || str[i] == '"')
 		{
-			if (inquote && quote == str[i]) 
+			if (inquote && quote == str[i])
 			{
 				inquote = false;
 			}
@@ -9612,7 +9664,6 @@ int erydb_parse_vtable(THD* thd, String& vquery, THD::erydb_state vtable_state)
 	LEX *old_lex;
 	Query_arena *arena, backup;
 	LEX tmp_lex;
-	ulonglong old_optimizer_switch;
 
 	tmp_disable_binlog(thd);
 	old_lex= thd->lex;
@@ -9622,24 +9673,19 @@ int erydb_parse_vtable(THD* thd, String& vquery, THD::erydb_state vtable_state)
 	  arena= 0;
 	else
 	  thd->set_n_backup_active_arena(arena, &backup);
-	old_optimizer_switch = thd->variables.optimizer_switch;
-
-	thd->variables.optimizer_switch = OPTIMIZER_SWITCH_IN_TO_EXISTS | \
-		                          OPTIMIZER_SWITCH_EXISTS_TO_IN;
 
 	alloc_query(thd, vquery.c_ptr(), vquery.length());
 	thd->erydb_vtable.vtable_state = vtable_state;
-	
+
 	Parser_state parser_state;
 	parser_state.init(thd, thd->query(), thd->query_length());
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 	printf("<<< Parse vtable: %s\n", vquery.c_ptr());
 	#endif
 	mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
 	delete_explain_query(thd->lex);
 	close_thread_tables(thd);
 
-	thd->variables.optimizer_switch = old_optimizer_switch;
 	lex_end(thd->lex);
 	thd->lex= old_lex;
 	if (arena)
@@ -9649,15 +9695,15 @@ int erydb_parse_vtable(THD* thd, String& vquery, THD::erydb_state vtable_state)
 	DBUG_RETURN(1);
 }
 
-int erydb_vtable_process(THD* thd, Statement* statement)
+int erydb_vtable_process(THD* thd, ulonglong old_optimizer_switch, Statement* statement)
 {
 	DBUG_ENTER("erydb_vtable_process");
     Parser_state parser_state;
+    // MCOL-260
     if (parser_state.init(thd, thd->query(), thd->query_length()))
     {
 		DBUG_RETURN(0);
     }
-
 	// @EryDB. check global variable to determine vtable mode
 	if (thd->variables.erydb_vtable_mode == 0)
 	{
@@ -9686,6 +9732,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 	{
 		// MariaDB issue 8078: The EryDB code reparses the statement and corrupts
 		// the query table list for the next run. We need to save and restore it.
+		// Is this an issue in mariadb erydb? Needs to be checked.
 		Query_tables_list backup;
 		thd->lex->reset_n_backup_query_tables_list(&backup);
 
@@ -9694,13 +9741,15 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 		thd->reset_for_next_command();
 		if (query_cache_send_result_to_client(thd, thd->query(), thd->query_length()) <= 0)
 		{
-//			sp_cache_flush_obsolete(&thd->sp_proc_cache);
-//			sp_cache_flush_obsolete(&thd->sp_func_cache);
+			sp_cache_enforce_limit(thd->sp_proc_cache, stored_program_cache_size);
+			sp_cache_enforce_limit(thd->sp_func_cache, stored_program_cache_size);
 			Parser_state parser_state;
 			parser_state.init(thd, thd->query(), thd->query_length());
 			parse_sql(thd, &parser_state, NULL, true);
 			delete_explain_query(thd->lex);
 		}
+		thd->variables.optimizer_switch = OPTIMIZER_SWITCH_IN_TO_EXISTS | \
+						OPTIMIZER_SWITCH_EXISTS_TO_IN;
 
 		if (thd->query() &&
 		    (! thd->db	|| strcmp(thd->db, "information_schema") != 0) &&
@@ -9708,7 +9757,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 		    std::string(thd->query()).find("@@version_comment") == std::string::npos)
 		{
 			thd->erydb_vtable.isInsertSelect = false;
-			
+
 			// SELECT vtable processing
 			if (thd->lex->sql_command == SQLCOM_SELECT ||
 		    thd->lex->sql_command == SQLCOM_EXECUTE ||
@@ -9727,7 +9776,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 				bool isSqlExecute = false; //This flag is used to tell prepared statement from stored procedure
 				bool isExplain = false;
 				std::string lower_case_query;
-				
+
 				// to replace all the non-quoted tab and \n with space. For text processing use.
 				std::string query = erydb_cleanQuery(thd->query());
 				alloc_query(thd, query.c_str(), query.length());
@@ -9759,7 +9808,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						LEX_STRING *name= &lex->prepared_stmt_name;
 						stmt= (Prepared_statement*) thd->stmt_map.find_by_name(name);
 					}
-	
+
 					if ( stmt )
 					{
 						if ( stmt->param_count == lex->prepared_stmt_params.elements )
@@ -9787,21 +9836,21 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 								else
 									replaceStr = std::string(str->c_ptr());
 							}
-	
+
 							tmp_query.replace( p1, 1, replaceStr);
 							begin++;
 							p1 = tmp_query.find("?");
 						}
 						alloc_query(thd, tmp_query.c_str(), tmp_query.length());
-	
+
 						// pre parse statement to tell DML statement from select
 						lex_start(thd);
 						thd->reset_for_next_command();
-	
+
 						Parser_state parser_state;
 						parser_state.init(thd, thd->query(), thd->query_length());
 						parse_sql(thd, &parser_state, NULL, true);
-	
+
 						if (thd->lex->sql_command != SQLCOM_SELECT)
 						{
 							ERYDB_execute = false;
@@ -9860,7 +9909,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						}
 
 						std::string tmp_query = std::string (sel_query->m_query.str);
-		#ifdef SAFE_MUTEX
+		#ifdef ERYDB_DEBUG
 						printf("query: %s length: %lu\n", tmp_query.c_str(), tmp_query.length());
 		#endif
 						if (args->elements > 0)
@@ -9913,8 +9962,8 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						thd->reset_for_next_command();
 						if (query_cache_send_result_to_client(thd, thd->query(), thd->query_length()) <= 0)
 						{
-//							sp_cache_flush_obsolete(&thd->sp_proc_cache);
-//							sp_cache_flush_obsolete(&thd->sp_func_cache);
+							sp_cache_enforce_limit(thd->sp_proc_cache, stored_program_cache_size);
+							sp_cache_enforce_limit(thd->sp_func_cache, stored_program_cache_size);
 							Parser_state parser_state;
 							parser_state.init(thd, thd->query(), thd->query_length());
 							parse_sql(thd, &parser_state, NULL, true);
@@ -9948,8 +9997,9 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						{
 							// auto switch -- vtablemode = 2. rerun the original query
 							thd->erydb_vtable.vtable_state = THD::ERYDB_DISABLE_VTABLE;
+							thd->variables.optimizer_switch = old_optimizer_switch;
 							alloc_query(thd, thd->erydb_vtable.original_query.c_ptr(), thd->erydb_vtable.original_query.length());
-		#ifdef SAFE_MUTEX
+		#ifdef ERYDB_DEBUG
 							printf("<<< V-TABLE unsupported components encountered. Auto switch to table mode\n");
 		#endif
 							delete_explain_query(thd->lex);
@@ -9966,7 +10016,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 				}
 				else // normal ERYDB_execute
 				{
-				
+
 					//@todo clean up the query and normalize space, tab, carriage return, etc.
 					if (thd->query())
 					{
@@ -10013,19 +10063,19 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						}
 						else
 						{
-							p3 = lower_case_sel_into.find("'", p2+1); 
+							p3 = lower_case_sel_into.find("'", p2+1);
 						}
 
 						//File file;
 						std::string fileName = sel_into.substr(p2+1, p3-p2-1);
 						std::string d_path;
-						char path[FN_REFLEN];  
+						char path[FN_REFLEN];
 						uint option= MY_UNPACK_FILENAME | MY_RELATIVE_PATH;
-					
+
 						#ifdef DONT_ALLOW_FULL_LOAD_DATA_PATHS
 							option|= MY_REPLACE_DIR;			// Force use of db directory
 						#endif
-					
+
 						if (!dirname_length(fileName.c_str()))
 						{
 							strxnmov(path, FN_REFLEN-1, mysql_real_data_home, thd->db ? thd->db : "",
@@ -10052,7 +10102,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 							thd->erydb_vtable.hasEryDBTable = false;
 							DBUG_RETURN(0);
 						}
-					
+
 						// @bug 3601. check directory first.
 	#ifdef _MSC_VER
 						if (d_path.empty()) d_path = "\\";
@@ -10081,23 +10131,24 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 							thd->lex->result = 0;
 							thd->erydb_vtable.isEryDBDML = false;
 							thd->erydb_vtable.hasEryDBTable = false;
+							thd->variables.optimizer_switch = old_optimizer_switch;
 							DBUG_RETURN(0);
 						}
 					}
-					
+
 					// vtable name
 					std::ostringstream oss;
 					oss << "erydb_vtable.$vtable_" << thd->thread_id;
 					std::string vtable_name = oss.str();
-				
+
 					// clear state
 					thd->erydb_vtable.has_order_by = false;
 					thd->erydb_vtable.original_query.free();
 					thd->erydb_vtable.original_query.append(thd->query(), thd->query_length());
-				
+
 					// phase 1. create vtable
 					std::string create;
-				
+
 					// insert with select
 					if (thd->erydb_vtable.isInsertSelect)
 					{
@@ -10110,7 +10161,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 							create_query.replace(p1, create_query.length()-p1, " ");
 							printf("create_query: %s", create_query.c_str());
 						}
-					
+
 						p1 = lower_case_query.find(" select ", 0);
 						if (p1 == std::string::npos)
 						{
@@ -10132,7 +10183,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 					create = "create temporary table " + vtable_name + " engine = aria as " + create_query;
 					thd->erydb_vtable.create_vtable_query.free();
 					thd->erydb_vtable.create_vtable_query.append(create.c_str(), create.length());
-				
+
 					// phase 2. alter vtable to ERYDB type
 					thd->erydb_vtable.alter_vtable_query.free();
 					thd->erydb_vtable.alter_vtable_query.append(STRING_WITH_LEN("alter table "));
@@ -10144,7 +10195,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 					select = "select * " + sel_into + " from " + vtable_name;
 					thd->erydb_vtable.select_vtable_query.free();
 					thd->erydb_vtable.select_vtable_query.append(select.c_str(), select.length());
-				
+
 					// phase 4. drop vtable -- Now done first
 					thd->erydb_vtable.drop_vtable_query.free();
 					thd->erydb_vtable.drop_vtable_query.append(STRING_WITH_LEN("drop table if exists "));
@@ -10191,7 +10242,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 								thd->erydb_vtable.select_vtable_query.append(select.c_str(), select.length());
 							}
 							thd->erydb_vtable.isUnion = false; // make state change to create_vtable in sql_select
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 							printf("<<< V-TABLE Redo Phase 1: %s\n", thd->query());
 	#endif
 							erydb_parse_vtable(thd, thd->erydb_vtable.create_vtable_query, THD::ERYDB_CREATE_VTABLE);
@@ -10212,7 +10263,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						// Not an EryDB query. Normal mysql processing
 						thd->set_query(thd->erydb_vtable.original_query.c_ptr(),
 									   thd->erydb_vtable.original_query.length());
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 						printf("<<< Non EryDB query: %s\n", thd->query());
 	#endif
 						thd->erydb_vtable.isEryDBDML = false;
@@ -10233,7 +10284,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 							// Normal mysql processing
 							thd->erydb_vtable.vtable_state = THD::ERYDB_DISABLE_VTABLE;
 							alloc_query(thd, thd->erydb_vtable.original_query.c_ptr(), thd->erydb_vtable.original_query.length());
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 							printf("<<< V-TABLE unsupported components encountered. Auto switch to table mode\n");
 	#endif
 							delete_explain_query(thd->lex);
@@ -10259,10 +10310,10 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 							insert = insert_query + " " + thd->erydb_vtable.select_vtable_query.c_ptr() + " " + on_duplicate;
 							thd->erydb_vtable.insert_vtable_query.free();
 							thd->erydb_vtable.insert_vtable_query.append(insert.c_str(), insert.length());
-						
+
 							alloc_query(thd, thd->erydb_vtable.insert_vtable_query.c_ptr(), thd->erydb_vtable.insert_vtable_query.length());
 							thd->erydb_vtable.vtable_state = THD::ERYDB_SELECT_VTABLE;
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 							printf("<<< V-TABLE insert select: %s\n", thd->query());
 	#endif
 							Parser_state parser_state;
@@ -10274,7 +10325,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 						{
 							alloc_query(thd, thd->erydb_vtable.select_vtable_query.c_ptr(), thd->erydb_vtable.select_vtable_query.length());
 							thd->erydb_vtable.vtable_state = THD::ERYDB_SELECT_VTABLE;
-	#ifdef SAFE_MUTEX
+	#ifdef ERYDB_DEBUG
 							printf("<<< V-TABLE insert %s\n", thd->query());
 	#endif
 							Parser_state parser_state;
@@ -10289,6 +10340,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 			{
 				thd->erydb_vtable.isEryDBDML = false;
 				thd->erydb_vtable.hasEryDBTable = false;
+				lex_end(thd->lex);
 				DBUG_RETURN(-1);
 			}
 		}
@@ -10296,6 +10348,7 @@ int erydb_vtable_process(THD* thd, Statement* statement)
 		{
 			thd->erydb_vtable.isEryDBDML = false;
 			thd->erydb_vtable.hasEryDBTable = false;
+			lex_end(thd->lex);
 			DBUG_RETURN(-1);
 		}
 

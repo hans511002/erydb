@@ -32,11 +32,19 @@ SET(CPACK_COMPONENTS_ALL Server ManPagesServer IniFiles Server_Scripts
 
 ## dhill
 SET(ERYDB_RPM_PACKAGE_NAME "erydb")
-SET(ERYDB_VERSION "5.1.0-1")
+SET(ERYDB_VERSION "5.1.1-1")
 SET(ERYDB_BIT "x86_64")
 
+IF (NOT CPACK_RPM_PACKAGE_VERSION)
+SET (CPACK_RPM_PACKAGE_VERSION ${PACKAGE_VERSION})
+ENDIF()
+IF (NOT CPACK_RPM_PACKAGE_RELEASE)
+SET (CPACK_RPM_PACKAGE_RELEASE ${PACKAGE_RELEASE})
+ENDIF()
+
 SET(CPACK_RPM_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
-SET(CPACK_PACKAGE_FILE_NAME "${ERYDB_RPM_PACKAGE_NAME}-${ERYDB_VERSION}-${ERYDB_BIT}-${RPM}")
+SET(CPACK_PACKAGE_FILE_NAME "${ERYDB_RPM_PACKAGE_NAME}-${CPACK_RPM_PACKAGE_VERSION}-${CPACK_RPM_PACKAGE_RELEASE}-${ERYDB_BIT}-${RPM}")
+SET(ERYDB_NO_DASH_VERSION ${CPACK_RPM_PACKAGE_VERSION})
 
 SET(CPACK_RPM_PACKAGE_RELEASE "1%{?dist}")
 SET(CPACK_RPM_PACKAGE_LICENSE "GPLv2")
@@ -51,12 +59,13 @@ It is GPL v2 licensed, which means you can use the it free of charge under the
 conditions of the GNU General Public License Version 2 (http://www.gnu.org/licenses/).
 
 MariaDB documentation can be found at https://mariadb.com/kb
+MariaDB bug reports should be submitted through https://jira.mariadb.org 
 
 ")
 
 SET(CPACK_RPM_SPEC_MORE_DEFINE "
 %define mysql_vendor ${CPACK_PACKAGE_VENDOR}
-%define mysqlversion ${MYSQL_NO_DASH_VERSION}
+%define mysqlversion ${ERYDB_NO_DASH_VERSION}
 %define mysqlbasedir ${CMAKE_INSTALL_PREFIX}
 %define mysqldatadir ${INSTALL_MYSQLDATADIR}
 %define mysqld_user  mysql
@@ -106,6 +115,8 @@ SET(CPACK_RPM_client_USER_FILELIST ${ignored} "%config(noreplace) ${INSTALL_SYSC
 SET(CPACK_RPM_compat_USER_FILELIST ${ignored})
 SET(CPACK_RPM_devel_USER_FILELIST ${ignored})
 SET(CPACK_RPM_test_USER_FILELIST ${ignored})
+SET(CPACK_RPM_common_USER_FILELIST ${ignored})
+
 
 # "set/append array" - append a set of strings, separated by a space
 MACRO(SETA var)
@@ -168,7 +179,7 @@ SETA(CPACK_RPM_server_PACKAGE_REQUIRES
 IF(WITH_WSREP)
 SETA(CPACK_RPM_server_PACKAGE_REQUIRES
   "galera" "rsync" "lsof" "grep" "gawk" "iproute"
-  "coreutils" "findutils" "tar")
+  "coreutils" "findutils" "tar" "which")
 ENDIF()
 
 SET(CPACK_RPM_server_PRE_INSTALL_SCRIPT_FILE ${CMAKE_SOURCE_DIR}/support-files/rpm/server-prein.sh)
@@ -209,10 +220,8 @@ ELSEIF(RPM MATCHES "fedora" OR RPM MATCHES "(rhel|centos)7")
   ALTERNATIVE_NAME("devel"  "mariadb-devel")
   ALTERNATIVE_NAME("server" "mariadb-server")
   ALTERNATIVE_NAME("server" "mysql-compat-server")
-  ALTERNATIVE_NAME("shared" "mariadb-libs")
   ALTERNATIVE_NAME("shared" "mysql-libs")
   ALTERNATIVE_NAME("test"   "mariadb-test")
-  SET(CPACK_RPM_common_PACKAGE_CONFLICTS "mariadb-libs < 1:%{version}-%{release}") 
 ENDIF()
 
 # workaround for lots of perl dependencies added by rpmbuild
@@ -238,6 +247,9 @@ SETA(CPACK_RPM_test_PACKAGE_PROVIDES
   "perl(mtr_io.pl)"
   "perl(mtr_match)"
   "perl(mtr_misc.pl)"
+  "perl(mtr_gcov.pl)"
+  "perl(mtr_gprof.pl)"
+  "perl(mtr_process.pl)"
   "perl(mtr_report)"
   "perl(mtr_results)"
   "perl(mtr_unique)")

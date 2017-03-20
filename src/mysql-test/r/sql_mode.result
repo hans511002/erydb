@@ -587,7 +587,7 @@ abcd"ef
 abcdef
 abcd
 ef
-abcdef
+abcdef
 abcd	ef
 abcd\ef
 abcd\%ef
@@ -608,7 +608,7 @@ wxyz"ef
 wxyzef
 wxyz
 ef
-wxyzef
+wxyzef
 wxyz	ef
 wxyz\ef
 wxyz\%ef
@@ -631,7 +631,7 @@ wxyz
 ef
 SELECT test_function(@to_var5);
 test_function(@to_var5)
-wxyzef
+wxyzef
 SELECT test_function(@to_var6);
 test_function(@to_var6)
 wxyz	ef
@@ -673,7 +673,7 @@ abcd"ef
 abcdef
 abcd
 ef
-abcdef
+abcdef
 abcd	ef
 abcd\ef
 abcd\%ef
@@ -694,7 +694,7 @@ wxyz"ef
 wxyzef
 wxyz
 ef
-wxyzef
+wxyzef
 wxyz	ef
 wxyz\ef
 wxyz\%ef
@@ -717,7 +717,7 @@ wxyz
 ef
 SELECT test_function(@to_var5);
 test_function(@to_var5)
-wxyzef
+wxyzef
 SELECT test_function(@to_var6);
 test_function(@to_var6)
 wxyz	ef

@@ -620,7 +620,7 @@ int Arg_comparator::set_compare_func(Item_func_or_sum *item, Item_result type)
 int Arg_comparator::set_cmp_func(Item_func_or_sum *owner_arg,
                                  Item **a1, Item **a2)
 {
-  thd= current_thd;
+  THD *thd= current_thd;
   owner= owner_arg;
   set_null= set_null && owner_arg;
   a= a1;
@@ -752,12 +752,10 @@ get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
   if (cache_arg && item->const_item() &&
       !(item->type() == Item::CACHE_ITEM && item->cmp_type() == TIME_RESULT))
   {
-    Query_arena backup;
-    Query_arena *save_arena= thd->switch_to_arena_for_cached_items(&backup);
-    Item_cache_temporal *cache= new (thd->mem_root) Item_cache_temporal(thd, f_type);
-    if (save_arena)
-      thd->set_query_arena(save_arena);
+    if (!thd)
+      thd= current_thd;
 
+    Item_cache_temporal *cache= new (thd->mem_root) Item_cache_temporal(thd, f_type);
     cache->store_packed(value, item);
     *cache_arg= cache;
     *item_arg= cache_arg;
@@ -792,12 +790,12 @@ int Arg_comparator::compare_temporal(enum_field_types type)
     owner->null_value= 1;
 
   /* Get DATE/DATETIME/TIME value of the 'a' item. */
-  a_value= get_datetime_value(thd, &a, &a_cache, type, &a_is_null);
+  a_value= get_datetime_value(0, &a, &a_cache, type, &a_is_null);
   if (a_is_null)
     return -1;
 
   /* Get DATE/DATETIME/TIME value of the 'b' item. */
-  b_value= get_datetime_value(thd, &b, &b_cache, type, &b_is_null);
+  b_value= get_datetime_value(0, &b, &b_cache, type, &b_is_null);
   if (b_is_null)
     return -1;
 
@@ -815,10 +813,10 @@ int Arg_comparator::compare_e_temporal(enum_field_types type)
   longlong a_value, b_value;
 
   /* Get DATE/DATETIME/TIME value of the 'a' item. */
-  a_value= get_datetime_value(thd, &a, &a_cache, type, &a_is_null);
+  a_value= get_datetime_value(0, &a, &a_cache, type, &a_is_null);
 
   /* Get DATE/DATETIME/TIME value of the 'b' item. */
-  b_value= get_datetime_value(thd, &b, &b_cache, type, &b_is_null);
+  b_value= get_datetime_value(0, &b, &b_cache, type, &b_is_null);
   return a_is_null || b_is_null ? a_is_null == b_is_null
                                 : a_value == b_value;
 }
@@ -2263,11 +2261,6 @@ uint Item_func_case_abbreviation2::decimal_precision2(Item **args) const
 }
 
 
-Field *Item_func_ifnull::tmp_table_field(TABLE *table)
-{
-  return tmp_table_field_from_field_type(table, false, false);
-}
-
 double
 Item_func_ifnull::real_op()
 {
@@ -2558,7 +2551,7 @@ Item_func_nullif::fix_length_and_dec()
     See also class Item_func_nullif declaration.
   */
   if (arg_count == 2)
-    args[arg_count++]= args[0];
+    args[arg_count++]= m_arg0 ? m_arg0 : args[0];
 
   THD *thd= current_thd;
   /*
@@ -2709,7 +2702,47 @@ Item_func_nullif::fix_length_and_dec()
   unsigned_flag= args[2]->unsigned_flag;
   fix_char_length(args[2]->max_char_length());
   maybe_null=1;
+  m_arg0= args[0];
   setup_args_and_comparator(thd, &cmp);
+  /*
+    A special code for EXECUTE..PREPARE.
+
+    If args[0] did not change, then we don't remember it, as it can point
+    to a temporary Item object which will be destroyed between PREPARE
+    and EXECUTE. EXECUTE time fix_length_and_dec() will correctly set args[2]
+    from args[0] again.
+
+    If args[0] changed, then it can be Item_func_conv_charset() for the
+    original args[0], which was permanently installed during PREPARE time
+    into the item tree as a wrapper for args[0], using change_item_tree(), i.e.
+
+      NULLIF(latin1_field, 'a' COLLATE utf8_bin)
+
+    was "rewritten" to:
+
+      CASE WHEN CONVERT(latin1_field USING utf8) = 'a' COLLATE utf8_bin
+        THEN NULL
+        ELSE latin1_field
+
+    - m_args0 points to Item_field corresponding to latin1_field
+    - args[0] points to Item_func_conv_charset
+    - args[0]->args[0] is equal to m_args0
+    - args[1] points to Item_func_set_collation
+    - args[2] points is eqial to m_args0
+
+    In this case we remember and reuse m_arg0 during EXECUTE time as args[2].
+
+    QQ: How to make sure that m_args0 does not point
+    to something temporary which will be destoyed between PREPARE and EXECUTE.
+    The condition below should probably be more strict and somehow check that:
+    - change_item_tree() was called for the new args[0]
+    - m_args0 is referenced from inside args[0], e.g. as a function argument,
+      and therefore it is also something that won't be destroyed between
+      PREPARE and EXECUTE.
+    Any ideas?
+  */
+  if (args[0] == m_arg0)
+    m_arg0= NULL;
 }
 
 
@@ -3720,7 +3753,7 @@ uchar *in_datetime::get_value(Item *item)
   Item **tmp_item= lval_cache ? &lval_cache : &item;
   enum_field_types f_type=
     tmp_item[0]->field_type_for_temporal_comparison(warn_item);
-  tmp.val= get_datetime_value(thd, &tmp_item, &lval_cache, f_type, &is_null);
+  tmp.val= get_datetime_value(0, &tmp_item, &lval_cache, f_type, &is_null);
   if (item->null_value)
     return 0;
   tmp.unsigned_flag= 1L;
@@ -3985,7 +4018,7 @@ void cmp_item_datetime::store_value(Item *item)
   Item **tmp_item= lval_cache ? &lval_cache : &item;
   enum_field_types f_type=
     tmp_item[0]->field_type_for_temporal_comparison(warn_item);
-  value= get_datetime_value(thd, &tmp_item, &lval_cache, f_type, &is_null);
+  value= get_datetime_value(0, &tmp_item, &lval_cache, f_type, &is_null);
   m_null_value= item->null_value;
 }
 
@@ -4512,7 +4545,8 @@ Item_cond::fix_fields(THD *thd, Item **ref)
         was:    <field>
         become: <field> = 1
     */
-    if (item->type() == FIELD_ITEM)
+    Item::Type type= item->type();
+    if (type == Item::FIELD_ITEM || type == Item::REF_ITEM)
     {
       Query_arena backup, *arena;
       Item *new_item;

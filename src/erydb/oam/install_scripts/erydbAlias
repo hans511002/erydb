@@ -1,0 +1,14 @@
+# erydb Alias Commands
+#
+alias erymysql='/usr/local/erydb/mysql/bin/mysql --defaults-file=/usr/local/erydb/mysql/my.cnf -u root'
+alias ea=/usr/local/erydb/bin/eryadmin
+alias eryadmin=/usr/local/erydb/bin/eryadmin
+alias cpimport=/usr/local/erydb/bin/cpimport
+alias home='cd /usr/local/erydb'
+alias log='cd /var/log/erydb/'
+alias core='cd /var/log/erydb/corefiles'
+alias tmsg='tail -f /var/log/messages'
+alias tdebug='tail -f /var/log/erydb/debug.log'
+alias tinfo='tail -f /var/log/erydb/info.log'
+alias dbrm='cd /usr/local/erydb/data1/systemFiles/dbrm'
+alias module='cat /usr/local/erydb/local/module'

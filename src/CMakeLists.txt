@@ -102,7 +102,7 @@ PROJECT(${MYSQL_PROJECT_NAME})
 
 SET(CPACK_PACKAGE_NAME "erydb")
 SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "erydb: a very fast and robust SQL database server")
-SET(CPACK_PACKAGE_URL "http://mariadb.org")
+SET(CPACK_PACKAGE_URL "http://erydb.org")
 
 IF(BUILD_CONFIG)
   INCLUDE(
@@ -191,12 +191,16 @@ IF (WITH_ASAN)
   # gcc 4.8.1 and new versions of clang
   MY_CHECK_AND_SET_COMPILER_FLAG("-fsanitize=address -O1 -Wno-error -fPIC"
     DEBUG RELWITHDEBINFO)
+  SET(HAVE_C_FSANITIZE ${HAVE_C__fsanitize_address__O1__Wno_error__fPIC})
+  SET(HAVE_CXX_FSANITIZE ${HAVE_CXX__fsanitize_address__O1__Wno_error__fPIC})
   IF(HAVE_C_FSANITIZE AND HAVE_CXX_FSANITIZE)
     SET(WITH_ASAN_OK 1)
   ELSE()
     # older versions of clang
     MY_CHECK_AND_SET_COMPILER_FLAG("-faddress-sanitizer -O1 -fPIC"
       DEBUG RELWITHDEBINFO)
+    SET(HAVE_C_FADDRESS ${HAVE_C__faddress_sanitizer__O1__fPIC})
+    SET(HAVE_CXX_FADDRESS ${HAVE_CXX__faddress_sanitizer__O1__fPIC})
     IF(HAVE_C_FADDRESS AND HAVE_CXX_FADDRESS)
       SET(WITH_ASAN_OK 1)
     ENDIF()
@@ -283,7 +287,7 @@ ENDIF()
 
 # Set commonly used variables
 IF(WIN32)
-  SET(DEFAULT_MYSQL_HOME "C:/MariaDB${MYSQL_BASE_VERSION}")
+  SET(DEFAULT_MYSQL_HOME "C:/MariaDB ${MYSQL_BASE_VERSION}")
   SET(SHAREDIR share)
 ELSE()
   SET(DEFAULT_MYSQL_HOME ${CMAKE_INSTALL_PREFIX})

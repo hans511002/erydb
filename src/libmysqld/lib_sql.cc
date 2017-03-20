@@ -333,6 +333,12 @@ static int emb_stmt_execute(MYSQL_STMT *stmt)
   THD *thd;
   my_bool res;
 
+  if (stmt->param_count && !stmt->bind_param_done)
+  {
+    set_stmt_error(stmt, CR_PARAMS_NOT_BOUND, unknown_sqlstate, NULL);
+    DBUG_RETURN(1);
+  }
+
   int4store(header, stmt->stmt_id);
   header[4]= (uchar) stmt->flags;
   thd= (THD*)stmt->mysql->thd;
@@ -428,8 +434,8 @@ static void emb_free_embedded_thd(MYSQL *mysql)
   thread_count--;
   thd->store_globals();
   thd->unlink();
-  delete thd;
   mysql_mutex_unlock(&LOCK_thread_count);
+  delete thd;
   my_pthread_setspecific_ptr(THR_THD,  0);
   mysql->thd=0;
 }

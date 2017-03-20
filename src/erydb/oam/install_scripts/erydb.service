@@ -1,0 +1,14 @@
+[Unit]
+Description=erydb
+After=network.target
+[Service]
+Type=forking
+#Restart=on-abnormal
+GuessMainPID=yes
+ExecStart=/usr/local/erydb/bin/erydb start
+ExecStop=/usr/local/erydb/bin/erydb stop
+ExecReload=/bin/kill -USR2 $MAINPID
+TimeoutStopSec=5
+LimitNOFILE=65535
+[Install]
+WantedBy=multi-user.target

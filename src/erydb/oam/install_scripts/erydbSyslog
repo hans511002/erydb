@@ -1,0 +1,6 @@
+# erydb Database Platform Logging
+local1.=crit -/var/log/erydb/crit.log
+local1.=err -/var/log/erydb/err.log
+local1.=warning -/var/log/erydb/warning.log
+local1.=info -/var/log/erydb/info.log
+local1.=debug -/var/log/erydb/debug.log

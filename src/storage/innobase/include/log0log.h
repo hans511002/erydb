@@ -2,6 +2,7 @@
 
 Copyright (c) 1995, 2013, Oracle and/or its affiliates. All rights reserved.
 Copyright (c) 2009, Google Inc.
+Copyright (c) 2017, MariaDB Corporation
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -878,7 +879,7 @@ struct log_t{
 					pending flushes or writes */
 	/* NOTE on the 'flush' in names of the fields below: starting from
 	4.0.14, we separate the write of the log file and the actual fsync()
-	or other method to flush it to disk. The names below shhould really
+	or other method to flush it to disk. The names below should really
 	be 'flush_or_write'! */
 	os_event_t	no_flush_event;	/*!< this event is in the reset state
 					when a flush or a write is running;
@@ -1013,21 +1014,8 @@ struct log_t{
 /* @} */
 #endif /* UNIV_LOG_ARCHIVE */
 
-extern os_event_t log_scrub_event;
 /* log scrubbing speed, in bytes/sec */
 extern ulonglong innodb_scrub_log_speed;
-
-/*****************************************************************//**
-This is the main thread for log scrub. It waits for an event and
-when waked up fills current log block with dummy records and
-sleeps again.
-@return this function does not return, it calls os_thread_exit() */
-extern "C" UNIV_INTERN
-os_thread_ret_t
-DECLARE_THREAD(log_scrub_thread)(
-/*===============================*/
-	void* arg);				/*!< in: a dummy parameter
-						required by os_thread_create */
 
 #ifndef UNIV_NONINL
 #include "log0log.ic"

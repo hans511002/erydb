@@ -248,14 +248,28 @@ static txn_child_manager tcm;
         .xa_xid = {0, 0, 0, ""},
         .progress_poll_fun = NULL,
         .progress_poll_fun_extra = NULL,
-        .txn_lock = ZERO_MUTEX_INITIALIZER,
+
+        // You cannot initialize txn_lock a TOKU_MUTEX_INITIALIZER, because we
+        // will initialize it in the code below, and it cannot already
+        // be initialized at that point.  Also, in general, you don't
+        // get to use PTHREAD_MUTEX_INITALIZER (which is what is inside
+        // TOKU_MUTEX_INITIALIZER) except in static variables, and this
+        // is initializing an auto variable.
+        // 
+        // And we cannot simply avoid initializing these fields
+        // because, although it avoids -Wmissing-field-initializer
+        // errors under gcc, it gets other errors about non-trivial
+        // designated initializers not being supported.
+
+        .txn_lock = ZERO_MUTEX_INITIALIZER,   // Not TOKU_MUTEX_INITIALIZER
         .open_fts = open_fts,
         .roll_info = roll_info,
-        .state_lock = ZERO_MUTEX_INITIALIZER,
-        .state_cond = TOKU_COND_INITIALIZER,
+        .state_lock = ZERO_MUTEX_INITIALIZER, // Not TOKU_MUTEX_INITIALIZER
+        .state_cond = ZERO_COND_INITIALIZER,  // Not TOKU_COND_INITIALIZER
         .state = TOKUTXN_LIVE,
         .num_pin = 0,
         .client_id = 0,
+        .client_extra = nullptr,
         .start_time = time(NULL),
     };
 
@@ -692,12 +706,14 @@ bool toku_txn_has_spilled_rollback(TOKUTXN txn) {
     return txn_has_spilled_rollback_logs(txn);
 }
 
-uint64_t toku_txn_get_client_id(TOKUTXN txn) {
-    return txn->client_id;
+void toku_txn_get_client_id(TOKUTXN txn, uint64_t *client_id, void **client_extra) {
+    *client_id = txn->client_id;
+    *client_extra = txn->client_extra;
 }
 
-void toku_txn_set_client_id(TOKUTXN txn, uint64_t client_id) {
+void toku_txn_set_client_id(TOKUTXN txn, uint64_t client_id, void *client_extra) {
     txn->client_id = client_id;
+    txn->client_extra = client_extra;
 }
 
 time_t toku_txn_get_start_time(struct tokutxn *txn) {

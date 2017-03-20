@@ -103,7 +103,7 @@ class DllExport TDBTBL : public TDBPRX {
 /***********************************************************************/
 /*  Class TBTBLK: TDBPLG TABID special column descriptor.              */
 /***********************************************************************/
-class TBTBLK : public TERYDBLK {
+class TBTBLK : public TIDBLK {
  public:
   // The constructor must restore Value because XOBJECT has a void
   // constructor called by default that set Value to NULL
@@ -112,12 +112,12 @@ class TBTBLK : public TERYDBLK {
   // Methods
   virtual void ReadColumn(PGLOBAL g);
 
-  // Fake operator new used to change TERYDBLK into SDTBLK
-  void * operator new(size_t size, TERYDBLK *sp) {return sp;}
+  // Fake operator new used to change TIDBLK into SDTBLK
+  void * operator new(size_t size, TIDBLK *sp) {return sp;}
 
 #if !defined(__BORLANDC__)
   // Avoid warning C4291 by defining a matching dummy delete operator
-  void operator delete(void *, TERYDBLK*) {}
+  void operator delete(void *, TIDBLK*) {}
   void operator delete(void *, size_t size) {}
 #endif
 

@@ -1072,6 +1072,10 @@ public:
     (if sql_calc_found_rows is used, LIMIT is ignored)
   */
   ha_rows select_limit;
+  /*
+    Number of duplicate rows found in UNION.
+  */
+  ha_rows duplicate_rows;
   /**
     Used to fetch no more than given amount of rows per one
     fetch operation of server side cursor.
@@ -1291,7 +1295,8 @@ public:
   enum join_optimization_state { NOT_OPTIMIZED=0,
                                  OPTIMIZATION_IN_PROGRESS=1,
                                  OPTIMIZATION_DONE=2};
-  bool optimized; ///< flag to avoid double optimization in EXPLAIN
+  // state of JOIN optimization
+  enum join_optimization_state optimization_state;
   bool initialized; ///< flag to avoid double init_execution calls
 
   Explain_select *explain;
@@ -1347,7 +1352,7 @@ public:
     sort_and_group= 0;
     first_record= 0;
     do_send_rows= 1;
-    send_records= 0;
+    duplicate_rows= send_records= 0;
     found_records= 0;
     fetch_limit= HA_POS_ERROR;
     join_examined_rows= 0;
@@ -1379,7 +1384,7 @@ public:
     ref_pointer_array= items0= items1= items2= items3= 0;
     ref_pointer_array_size= 0;
     zero_result_cause= 0;
-    optimized= 0;
+    optimization_state= JOIN::NOT_OPTIMIZED;
     have_query_plan= QEP_NOT_PRESENT_YET;
     initialized= 0;
     cleaned= 0;
@@ -1824,7 +1829,9 @@ bool error_if_full_join(JOIN *join);
 int report_error(TABLE *table, int error);
 int safe_index_read(JOIN_TAB *tab);
 int get_quick_record(SQL_SELECT *select);
-SORT_FIELD * make_unireg_sortorder(THD *thd, ORDER *order, uint *length,
+SORT_FIELD *make_unireg_sortorder(THD *thd, JOIN *join,
+                                  table_map first_table_map,
+                                  ORDER *order, uint *length,
                                   SORT_FIELD *sortorder);
 int setup_order(THD *thd, Item **ref_pointer_array, TABLE_LIST *tables,
 		List<Item> &fields, List <Item> &all_fields, ORDER *order);

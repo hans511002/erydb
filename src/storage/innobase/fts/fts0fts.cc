@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2011, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2016, MariaDB Corporation. All Rights reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -108,6 +109,7 @@ UNIV_INTERN mysql_pfs_key_t	fts_pll_tokenize_mutex_key;
 /** variable to record innodb_fts_internal_tbl_name for information
 schema table INNODB_FTS_INSERTED etc. */
 UNIV_INTERN char* fts_internal_tbl_name		= NULL;
+UNIV_INTERN char* fts_internal_tbl_name2	= NULL;
 
 /** InnoDB default stopword list:
 There are different versions of stopwords, the stop words listed
@@ -265,13 +267,15 @@ FTS auxiliary INDEX table and clear the cache at the end.
 @param[in,out]	sync		sync state
 @param[in]	unlock_cache	whether unlock cache lock when write node
 @param[in]	wait		whether wait when a sync is in progress
+@param[in]      has_dict        whether has dict operation lock
 @return DB_SUCCESS if all OK */
 static
 dberr_t
 fts_sync(
 	fts_sync_t*	sync,
 	bool		unlock_cache,
-	bool		wait);
+	bool		wait,
+	bool		has_dict);
 
 /****************************************************************//**
 Release all resources help by the words rb tree e.g., the node ilist. */
@@ -280,7 +284,7 @@ void
 fts_words_free(
 /*===========*/
 	ib_rbt_t*	words)		/*!< in: rb tree of words */
-	__attribute__((nonnull));
+	MY_ATTRIBUTE((nonnull));
 #ifdef FTS_CACHE_SIZE_DEBUG
 /****************************************************************//**
 Read the max cache size parameter from the config table. */
@@ -302,7 +306,7 @@ fts_add_doc_by_id(
 /*==============*/
 	fts_trx_table_t*ftt,		/*!< in: FTS trx table */
 	doc_id_t	doc_id,		/*!< in: doc id */
-	ib_vector_t*	fts_indexes __attribute__((unused)));
+	ib_vector_t*	fts_indexes MY_ATTRIBUTE((unused)));
 					/*!< in: affected fts indexes */
 #ifdef FTS_DOC_STATS_DEBUG
 /****************************************************************//**
@@ -317,7 +321,7 @@ fts_is_word_in_index(
 	fts_table_t*	fts_table,	/*!< in: table instance */
 	const fts_string_t* word,	/*!< in: the word to check */
 	ibool*		found)		/*!< out: TRUE if exists */
-	__attribute__((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((nonnull, warn_unused_result));
 #endif /* FTS_DOC_STATS_DEBUG */
 
 /******************************************************************//**
@@ -332,7 +336,7 @@ fts_update_sync_doc_id(
 	const char*		table_name,	/*!< in: table name, or NULL */
 	doc_id_t		doc_id,		/*!< in: last document id */
 	trx_t*			trx)		/*!< in: update trx, or NULL */
-	__attribute__((nonnull(1)));
+	MY_ATTRIBUTE((nonnull(1)));
 
 /****************************************************************//**
 This function loads the default InnoDB stopword list */
@@ -1075,13 +1079,12 @@ fts_words_free(
 	}
 }
 
-/*********************************************************************//**
-Clear cache. */
+/** Clear cache.
+@param[in,out]	cache	fts cache */
 UNIV_INTERN
 void
 fts_cache_clear(
-/*============*/
-	fts_cache_t*	cache)		/*!< in: cache */
+	fts_cache_t*	cache)
 {
 	ulint		i;
 
@@ -1477,7 +1480,7 @@ fts_cache_add_doc(
 /****************************************************************//**
 Drops a table. If the table can't be found we return a SUCCESS code.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_drop_table(
 /*===========*/
@@ -1519,7 +1522,7 @@ fts_drop_table(
 /****************************************************************//**
 Rename a single auxiliary table due to database name change.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_rename_one_aux_table(
 /*=====================*/
@@ -1628,7 +1631,7 @@ Drops the common ancillary tables needed for supporting an FTS index
 on the given table. row_mysql_lock_data_dictionary must have been called
 before this.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_drop_common_tables(
 /*===================*/
@@ -1755,7 +1758,7 @@ Drops FTS ancillary tables needed for supporting an FTS index
 on the given table. row_mysql_lock_data_dictionary must have been called
 before this.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_drop_all_index_tables(
 /*======================*/
@@ -1919,7 +1922,7 @@ func_exit:
 
 		trx_rollback_to_savepoint(trx, NULL);
 
-		row_drop_table_for_mysql(table->name, trx, FALSE);
+		row_drop_table_for_mysql(table->name, trx, FALSE, TRUE);
 
 		trx->error_state = DB_SUCCESS;
 	}
@@ -1932,6 +1935,8 @@ func_exit:
 /*************************************************************//**
 Wrapper function of fts_create_index_tables_low(), create auxiliary
 tables for an FTS index
+
+@see row_merge_create_fts_sort_index()
 @return: DB_SUCCESS or error code */
 static
 dict_table_t*
@@ -1963,13 +1968,12 @@ fts_create_one_index_table(
 		(int)(field->col->prtype & DATA_MYSQL_TYPE_MASK),
 		(uint) dtype_get_charset_coll(field->col->prtype));
 
-	if (strcmp(charset->name, "latin1_swedish_ci") == 0) {
-		dict_mem_table_add_col(new_table, heap, "word", DATA_VARCHAR,
-				       field->col->prtype, FTS_MAX_WORD_LEN);
-	} else {
-		dict_mem_table_add_col(new_table, heap, "word", DATA_VARMYSQL,
-				       field->col->prtype, FTS_MAX_WORD_LEN);
-	}
+	dict_mem_table_add_col(new_table, heap, "word",
+			       charset == &my_charset_latin1
+			       ? DATA_VARCHAR : DATA_VARMYSQL,
+			       field->col->prtype,
+			       FTS_MAX_WORD_LEN_IN_CHAR
+			       * DATA_MBMAXLEN(field->col->mbminmaxlen));
 
 	dict_mem_table_add_col(new_table, heap, "first_doc_id", DATA_INT,
 			       DATA_NOT_NULL | DATA_UNSIGNED,
@@ -2071,7 +2075,7 @@ fts_create_index_tables_low(
 
 		trx_rollback_to_savepoint(trx, NULL);
 
-		row_drop_table_for_mysql(table_name, trx, FALSE);
+		row_drop_table_for_mysql(table_name, trx, FALSE, TRUE);
 
 		trx->error_state = DB_SUCCESS;
 	}
@@ -2663,7 +2667,7 @@ fts_get_next_doc_id(
 This function fetch the Doc ID from CONFIG table, and compare with
 the Doc ID supplied. And store the larger one to the CONFIG table.
 @return DB_SUCCESS if OK */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 dberr_t
 fts_cmp_set_sync_doc_id(
 /*====================*/
@@ -2917,7 +2921,7 @@ fts_add(
 /*********************************************************************//**
 Do commit-phase steps necessary for the deletion of a row.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_delete(
 /*=======*/
@@ -3008,7 +3012,7 @@ fts_delete(
 /*********************************************************************//**
 Do commit-phase steps necessary for the modification of a row.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_modify(
 /*=======*/
@@ -3079,7 +3083,7 @@ fts_create_doc_id(
 The given transaction is about to be committed; do whatever is necessary
 from the FTS system's POV.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_commit_table(
 /*=============*/
@@ -3413,7 +3417,7 @@ fts_add_doc_by_id(
 /*==============*/
 	fts_trx_table_t*ftt,		/*!< in: FTS trx table */
 	doc_id_t	doc_id,		/*!< in: doc id */
-	ib_vector_t*	fts_indexes __attribute__((unused)))
+	ib_vector_t*	fts_indexes MY_ATTRIBUTE((unused)))
 					/*!< in: affected fts indexes */
 {
 	mtr_t		mtr;
@@ -3533,7 +3537,7 @@ fts_add_doc_by_id(
 				get_doc, clust_index, doc_pcur, offsets, &doc);
 
 			if (doc.found) {
-				ibool	success __attribute__((unused));
+				ibool	success MY_ATTRIBUTE((unused));
 
 				btr_pcur_store_position(doc_pcur, &mtr);
 				mtr_commit(&mtr);
@@ -3568,7 +3572,7 @@ fts_add_doc_by_id(
 
 				DBUG_EXECUTE_IF(
 					"fts_instrument_sync_debug",
-					fts_sync(cache->sync, true, true);
+					fts_sync(cache->sync, true, true, false);
 				);
 
 				DEBUG_SYNC_C("fts_instrument_sync_request");
@@ -3642,7 +3646,7 @@ fts_get_max_doc_id(
 	dict_table_t*	table)		/*!< in: user table */
 {
 	dict_index_t*	index;
-	dict_field_t*	dfield __attribute__((unused)) = NULL;
+	dict_field_t*	dfield MY_ATTRIBUTE((unused)) = NULL;
 	doc_id_t	doc_id = 0;
 	mtr_t		mtr;
 	btr_pcur_t	pcur;
@@ -3900,7 +3904,7 @@ fts_write_node(
 /*********************************************************************//**
 Add rows to the DELETED_CACHE table.
 @return DB_SUCCESS if all went well else error code*/
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_sync_add_deleted_cache(
 /*=======================*/
@@ -3954,7 +3958,7 @@ fts_sync_add_deleted_cache(
 @param[in]	index_cache	index cache
 @param[in]	unlock_cache	whether unlock cache when write node
 @return DB_SUCCESS if all went well else error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_sync_write_words(
 	trx_t*			trx,
@@ -4090,7 +4094,7 @@ fts_sync_write_words(
 /*********************************************************************//**
 Write a single documents statistics to disk.
 @return DB_SUCCESS if all went well else error code */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_sync_write_doc_stat(
 /*====================*/
@@ -4344,7 +4348,7 @@ fts_sync_begin(
 Run SYNC on the table, i.e., write out data from the index specific
 cache to the FTS aux INDEX table and FTS aux doc id stats table.
 @return DB_SUCCESS if all OK */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_sync_index(
 /*===========*/
@@ -4380,13 +4384,11 @@ fts_sync_index(
 }
 
 /** Check if index cache has been synced completely
-@param[in,out]	sync		sync state
 @param[in,out]	index_cache	index cache
 @return true if index is synced, otherwise false. */
 static
 bool
 fts_sync_index_check(
-	fts_sync_t*		sync,
 	fts_index_cache_t*	index_cache)
 {
 	const ib_rbt_node_t*	rbt_node;
@@ -4409,14 +4411,36 @@ fts_sync_index_check(
 	return(true);
 }
 
-/*********************************************************************//**
-Commit the SYNC, change state of processed doc ids etc.
+/** Reset synced flag in index cache when rollback
+@param[in,out]	index_cache	index cache */
+static
+void
+fts_sync_index_reset(
+	fts_index_cache_t*	index_cache)
+{
+	const ib_rbt_node_t*	rbt_node;
+
+	for (rbt_node = rbt_first(index_cache->words);
+	     rbt_node != NULL;
+	     rbt_node = rbt_next(index_cache->words, rbt_node)) {
+
+		fts_tokenizer_word_t*	word;
+		word = rbt_value(fts_tokenizer_word_t, rbt_node);
+
+		fts_node_t*	fts_node;
+		fts_node = static_cast<fts_node_t*>(ib_vector_last(word->nodes));
+
+		fts_node->synced = false;
+	}
+}
+
+/** Commit the SYNC, change state of processed doc ids etc.
+@param[in,out]	sync	sync state
 @return DB_SUCCESS if all OK */
-static  __attribute__((nonnull, warn_unused_result))
+static  MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_sync_commit(
-/*============*/
-	fts_sync_t*	sync)			/*!< in: sync state */
+	fts_sync_t*	sync)
 {
 	dberr_t		error;
 	trx_t*		trx = sync->trx;
@@ -4469,18 +4493,19 @@ fts_sync_commit(
 			(double) n_nodes/ (double) elapsed_time);
 	}
 
+	/* Avoid assertion in trx_free(). */
+	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
 	return(error);
 }
 
-/*********************************************************************//**
-Rollback a sync operation */
+/** Rollback a sync operation
+@param[in,out]	sync	sync state */
 static
 void
 fts_sync_rollback(
-/*==============*/
-	fts_sync_t*	sync)			/*!< in: sync state */
+	fts_sync_t*	sync)
 {
 	trx_t*		trx = sync->trx;
 	fts_cache_t*	cache = sync->table->fts->cache;
@@ -4491,6 +4516,10 @@ fts_sync_rollback(
 
 		index_cache = static_cast<fts_index_cache_t*>(
 			ib_vector_get(cache->indexes, i));
+
+		/* Reset synced flag so nodes will not be skipped
+		in the next sync, see fts_sync_write_words(). */
+		fts_sync_index_reset(index_cache);
 
 		for (j = 0; fts_index_selector[j].value; ++j) {
 
@@ -4517,6 +4546,9 @@ fts_sync_rollback(
 	rw_lock_x_unlock(&cache->lock);
 
 	fts_sql_rollback(trx);
+
+	/* Avoid assertion in trx_free(). */
+	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 }
 
@@ -4525,13 +4557,15 @@ FTS auxiliary INDEX table and clear the cache at the end.
 @param[in,out]	sync		sync state
 @param[in]	unlock_cache	whether unlock cache lock when write node
 @param[in]	wait		whether wait when a sync is in progress
+@param[in]      has_dict        whether has dict operation lock
 @return DB_SUCCESS if all OK */
 static
 dberr_t
 fts_sync(
 	fts_sync_t*	sync,
 	bool		unlock_cache,
-	bool		wait)
+	bool		wait,
+	bool		has_dict)
 {
 	ulint		i;
 	dberr_t		error = DB_SUCCESS;
@@ -4559,6 +4593,12 @@ fts_sync(
 
 	DEBUG_SYNC_C("fts_sync_begin");
 	fts_sync_begin(sync);
+
+	/* When sync in background, we hold dict operation lock
+	to prevent DDL like DROP INDEX, etc. */
+	if (has_dict) {
+		sync->trx->dict_operation_lock_mode = RW_S_LATCH;
+	}
 
 begin_sync:
 	if (cache->total_size > fts_max_cache_size) {
@@ -4600,7 +4640,7 @@ begin_sync:
 			ib_vector_get(cache->indexes, i));
 
 		if (index_cache->index->to_be_dropped
-		    || fts_sync_index_check(sync, index_cache)) {
+		    || fts_sync_index_check(index_cache)) {
 			continue;
 		}
 
@@ -4615,6 +4655,7 @@ end_sync:
 	}
 
 	rw_lock_x_lock(&cache->lock);
+	sync->interrupted = false;
 	sync->in_progress = false;
 	os_event_set(sync->event);
 	rw_lock_x_unlock(&cache->lock);
@@ -4638,20 +4679,23 @@ FTS auxiliary INDEX table and clear the cache at the end.
 @param[in,out]	table		fts table
 @param[in]	unlock_cache	whether unlock cache when write node
 @param[in]	wait		whether wait for existing sync to finish
+@param[in]	has_dict	whether has dict operation lock
 @return DB_SUCCESS on success, error code on failure. */
 UNIV_INTERN
 dberr_t
 fts_sync_table(
 	dict_table_t*	table,
 	bool		unlock_cache,
-	bool		wait)
+	bool		wait,
+	bool		has_dict)
 {
 	dberr_t	err = DB_SUCCESS;
 
 	ut_ad(table->fts);
 
 	if (!dict_table_is_discarded(table) && table->fts->cache) {
-		err = fts_sync(table->fts->cache->sync, unlock_cache, wait);
+		err = fts_sync(table->fts->cache->sync,
+			       unlock_cache, wait, has_dict);
 	}
 
 	return(err);
@@ -6170,7 +6214,7 @@ fts_update_hex_format_flag(
 /*********************************************************************//**
 Rename an aux table to HEX format. It's called when "%016llu" is used
 to format an object id in table name, which only happens in Windows. */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_rename_one_aux_table_to_hex_format(
 /*===================================*/
@@ -6261,7 +6305,7 @@ Note the ids in tables are correct but the names are old ambiguous ones.
 
 This function should make sure that either all the parent table and aux tables
 are set DICT_TF2_FTS_AUX_HEX_NAME with flags2 or none of them are set */
-static __attribute__((nonnull, warn_unused_result))
+static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 fts_rename_aux_tables_to_hex_format_low(
 /*====================================*/
@@ -6415,7 +6459,7 @@ fts_fake_hex_to_dec(
 {
 	ib_id_t		dec_id = 0;
 	char		tmp_id[FTS_AUX_MIN_TABLE_ID_LENGTH];
-	int		ret __attribute__((unused));
+	int		ret MY_ATTRIBUTE((unused));
 
 	ret = sprintf(tmp_id, UINT64PFx, id);
 	ut_ad(ret == 16);
@@ -6527,6 +6571,36 @@ fts_check_corrupt_index(
 
 	dict_table_close(table, true, false);
 	return(0);
+}
+
+/* Get parent table name if it's a fts aux table
+@param[in]	aux_table_name	aux table name
+@param[in]	aux_table_len	aux table length
+@return parent table name, or NULL */
+char*
+fts_get_parent_table_name(
+	const char*	aux_table_name,
+	ulint		aux_table_len)
+{
+	fts_aux_table_t	aux_table;
+	char*		parent_table_name = NULL;
+
+	if (fts_is_aux_table_name(&aux_table, aux_table_name, aux_table_len)) {
+		dict_table_t*	parent_table;
+
+		parent_table = dict_table_open_on_id(
+			aux_table.parent_id, TRUE, DICT_TABLE_OP_NORMAL);
+
+		if (parent_table != NULL) {
+			parent_table_name = mem_strdupl(
+				parent_table->name,
+				strlen(parent_table->name));
+
+			dict_table_close(parent_table, TRUE, FALSE);
+		}
+	}
+
+	return(parent_table_name);
 }
 
 /** Check the validity of the parent table.
@@ -6737,7 +6811,7 @@ fts_drop_aux_table_from_vector(
 Check and drop all orphaned FTS auxiliary tables, those that don't have
 a parent table or FTS index defined on them.
 @return DB_SUCCESS or error code */
-static __attribute__((nonnull))
+static MY_ATTRIBUTE((nonnull))
 void
 fts_check_and_drop_orphaned_tables(
 /*===============================*/

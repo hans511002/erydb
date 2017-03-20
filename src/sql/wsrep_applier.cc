@@ -39,15 +39,9 @@ static Log_event* wsrep_read_log_event(
   const char *error= 0;
   Log_event *res=  0;
 
-  if (data_len > wsrep_max_ws_size)
-  {
-    error = "Event too big";
-    goto err;
-  }
+  res= Log_event::read_log_event(buf, data_len, &error, description_event,
+                                 true);
 
-  res= Log_event::read_log_event(buf, data_len, &error, description_event, true);
-
-err:
   if (!res)
   {
     DBUG_ASSERT(error != 0);
@@ -79,6 +73,9 @@ Format_description_log_event* wsrep_get_apply_format(THD* thd)
   {
     return (Format_description_log_event*) thd->wsrep_apply_format;
   }
+
+  DBUG_ASSERT(thd->wsrep_rgi);
+
   return thd->wsrep_rgi->rli->relay_log.description_event_for_exec;
 }
 
@@ -368,8 +365,10 @@ wsrep_cb_status_t wsrep_commit_cb(void*         const     ctx,
   else
     rcode = wsrep_rollback(thd);
 
+  /* Cleanup */
   wsrep_set_apply_format(thd, NULL);
   thd->mdl_context.release_transactional_locks();
+  thd->reset_query();                           /* Mutex protected */
   free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
   thd->tx_isolation= (enum_tx_isolation) thd->variables.tx_isolation;
 

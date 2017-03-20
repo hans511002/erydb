@@ -1,0 +1,403 @@
+#!/bin/bash
+#
+# $Id: post-install 3705 2013-08-07 19:47:20Z dhill $
+#
+# Post-install steps for erydb install
+
+prefix=/usr/local
+installdir=$prefix/erydb
+rpmmode=install
+user=root
+SUDO=" "
+if [ $USER != "root" ]; then
+	user=$USER
+        SUDO="sudo "
+fi
+
+quiet=0
+
+for arg in "$@"; do
+	if [ `expr -- "$arg" : '--prefix='` -eq 9 ]; then
+		prefix="`echo $arg | awk -F= '{print $2}'`"
+		installdir=$prefix/erydb
+	elif [ `expr -- "$arg" : '--rpmmode='` -eq 10 ]; then
+		rpmmode="`echo $arg | awk -F= '{print $2}'`"
+	elif [ `expr -- "$arg" : '--installdir='` -eq 13 ]; then
+		installdir="`echo $arg | awk -F= '{print $2}'`"
+		prefix=`dirname $installdir`
+	elif [ `expr -- "$arg" : '--user='` -eq 7 ]; then
+		user="`echo $arg | awk -F= '{print $2}'`"
+	elif [ `expr -- "$arg" : '--quiet'` -eq 7 ]; then
+		quiet=1
+	elif [ `expr -- "$arg" : '--plugin='` -eq 9 ]; then
+		plugin="`echo $arg | awk -F= '{print $2}'`"
+	else
+		echo "post-install: ignoring unknown argument: $arg" 1>&2
+	fi
+done
+
+if [ $installdir != "/usr/local/erydb" ]; then
+	export ERYDB_INSTALL_DIR=$installdir
+	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib
+	echo "$installdir/lib
+$installdir/mysql/lib
+$installdir/mysql/lib/plugin" >/etc/ld.so.conf.d/erydb.conf
+   ldconfig
+else
+	# add library config file
+	#/bin/cp -f $installdir/bin/erydb.conf /etc/ld.so.conf.d/
+	echo "$installdir/lib
+$installdir/mysql/lib
+$installdir/mysql/lib/plugin" >/etc/ld.so.conf.d/erydb.conf
+	
+	ldconfig
+fi
+
+echo "export ERYDB_HOME=\"$installdir\" 
+export PATH=\$PATH:$installdir/bin:$installdir/mysql/bin:
+"> /etc/profile.d/erydb.sh
+
+#check 64-bit OS compatiable
+arch=`uname -m`
+patcnt=`expr "$arch" : 'i.86'`
+is64bitos=1
+if [ $patcnt -ne 0 ]; then
+	is64bitos=0
+fi
+is64bitpkg=1
+file $installdir/bin/PrimProc | grep '64-bit' >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+	is64bitpkg=0
+fi
+if [ $is64bitpkg -eq 1 -a $is64bitos -ne 1 ]; then
+	echo "ERROR: Incompatiable Version, package is intended for a x86_64 architecture"
+	echo "exiting...."
+	exit 1
+fi
+
+if [ ! -f $installdir/etc/erydb.xml ]; then
+	echo "$installdir/etc/erydb.xml not found, exiting"
+	exit 1
+fi
+
+cd $installdir/lib || exit 1
+for lib in *.so.1.0.0; do
+	blib=`basename $lib .1.0.0`
+	ln -sf $lib $blib
+	ln -sf $lib ${blib}.1
+done
+chown -h $user.$user *.so >/dev/null 2>&1
+
+if [ -f libstdc++.so.6.0.14 ]; then
+	ln -sf libstdc++.so.6.0.14 libstdc++.so.6
+	chown -h $user.$user libstdc++.so.6 >/dev/null 2>&1
+fi
+
+# softlink for libperl.sp, used by cplogger
+$SUDO ln -s /usr/lib64/perl5/CORE/libperl.so /usr/lib64/libperl.so >/dev/null 2>&1
+
+#setup .bashrc
+if [ $user = "root" ]; then
+	bashFile=/root/.bashrc
+else
+	bashFile=$HOME/.bashrc
+fi
+
+touch ${bashFile}
+/bin/cp -f ${bashFile} ${bashFile}.erydbSave > /dev/null 2>&1
+
+if [ $user != "root" ]; then
+
+	egrep -qs 'erydb Non-Root' ${bashFile}
+	rc1=$?
+	if [ $rc1 -ne 0 ]; then
+        	echo " " >> ${bashFile}
+		echo "# erydb Non-Root Environment Variables" >> ${bashFile}
+        	echo "export ERYDB_INSTALL_DIR=$ERYDB_INSTALL_DIR" >> ${bashFile}
+        	echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ERYDB_INSTALL_DIR/lib:$ERYDB_INSTALL_DIR/mysql/lib/mysql" >> ${bashFile}
+        	. ${bashFile}
+	fi
+fi
+
+if [ $installdir != "/usr/local/erydb" ]; then
+        sed -i -e s@/usr/local/erydb@$installdir@g $installdir/bin/erydbAlias
+fi
+egrep -qs 'erydb Database Platform Alias Commands' ${bashFile}
+rc1=$?
+egrep -qs 'erydb Alias Commands' ${bashFile}
+rc2=$?
+if [ $rc1 -ne 0 -a $rc2 -ne 0 ]; then
+        cat $installdir/bin/erydbAlias >> ${bashFile}
+        echo " " >> ${bashFile}
+fi
+
+cd /
+
+test -d /var/log/mariadb || $SUDO mkdir /var/log/mariadb >/dev/null 2>&1
+test -d /var/log/erydb || $SUDO mkdir /var/log/erydb >/dev/null 2>&1
+
+if [ $user != "root" ]; then
+	$SUDO chmod -R 755 /var/log/mariadb >/dev/null 2>&1
+	$SUDO chown -R $user:$user /var/log/mariadb >/dev/null 2>&1
+fi
+
+test -d /var/log/erydb/archive || mkdir /var/log/erydb/archive >/dev/null 2>&1
+test -d /var/log/erydb/corefiles || mkdir /var/log/erydb/corefiles >/dev/null 2>&1
+test -d /var/log/erydb/trace || mkdir /var/log/erydb/trace >/dev/null 2>&1
+test -h /var/log/erydb/data && rm -f /var/log/erydb/data
+# make sure trace dir is world-writable and sticky
+test -d $installdir/data || mkdir $installdir/data
+test -d $installdir/data1 || mkdir $installdir/data1
+test -d $installdir/data1/systemFiles || mkdir $installdir/data1/systemFiles
+test -d $installdir/data1/systemFiles/dbrm || mkdir $installdir/data1/systemFiles/dbrm
+test -d $installdir/data1/systemFiles/dataTransaction || rmdir $installdir/data1/systemFiles/dataTransaction >/dev/null 2>&1
+test -d $installdir/data1/systemFiles/dataTransaction/archive || rmdir $installdir/data1/systemFiles/dataTransaction/archive >/dev/null 2>&1
+chmod 1755 $installdir/data1 >/dev/null 2>&1
+chmod -R 1755 $installdir/data1/systemFiles >/dev/null 2>&1
+chmod 1755 $installdir/etc > /dev/null 2>&1
+
+#create the bulk-load dirs
+mkdir -p $installdir/data/bulk/data/import >/dev/null 2>&1
+mkdir -p $installdir/data/bulk/log >/dev/null 2>&1
+mkdir -p $installdir/data/bulk/job >/dev/null 2>&1
+mkdir -p $installdir/data/bulk/rollback >/dev/null 2>&1
+mkdir -p $installdir/data/bulk/tmpjob >/dev/null 2>&1
+rm -f $installdir/data/bulk/tmpjob/* >/dev/null 2>&1
+chmod -R 755 $installdir/data/bulk >/dev/null 2>&1
+
+#create erydb temp file directory
+mkdir -p /tmp/erydb_tmp_files >/dev/null 2>&1
+
+#setup core file directory and link
+mkdir /var/log/erydb/corefiles > /dev/null 2>&1
+chmod 755 /var/log/erydb/corefiles > /dev/null 2>&1
+
+#create mount directories
+mkdir /mnt/tmp > /dev/null 2>&1
+mkdir /var/log/erydb/data/archive > /dev/null 2>&1
+
+#remove this fstab back file if its left over from 2.x version
+if test -f /etc/fstab.erydbSave ; then
+	rm -f /etc/fstab.erydbSave > /dev/null 2>&1
+fi
+test -d $installdir/mysql/db || mkdir -p $installdir/mysql/db
+# install Erydb Log Rotate File
+$SUDO cp $installdir/bin/erydbLogRotate /etc/logrotate.d/erydb > /dev/null 2>&1
+$SUDO chmod 644 /etc/logrotate.d/erydb
+
+# remove mysql archive log
+test -d $installdir/mysql/db || mkdir -p $installdir/mysql/db
+rm -rf $installdir/mysql/db/erydb_log_archive > /dev/null 2>&1
+
+# delete Erydb shared memory segments
+$installdir/bin/clearShm  > /dev/null 2>&1
+
+#setup the erydb service script
+rm -f /etc/init.d/erydb >/dev/null 2>&1
+rm -f /etc/init.d/mysql-erydb >/dev/null 2>&1
+
+if [ $user = "root" ]; then
+	systemctl=`which systemctl 2>/dev/null`
+	if [ -n "$systemctl" ]; then
+
+		chmod 644 $installdir/bin/erydb.service
+		cp $installdir/bin/erydb.service /usr/lib/systemd/system/. >/dev/null 2>&1
+		cp $installdir/bin/erydb.service /lib/systemd/system/. >/dev/null 2>&1
+		systemctl enable erydb >/dev/null 2>&1
+	else
+		chkconfig=`which chkconfig 2>/dev/null`
+		if [ -n "$chkconfig" ]; then
+
+			cp $installdir/bin/erydb /etc/init.d/. >/dev/null 2>&1
+			chkconfig --add erydb > /dev/null 2>&1
+			chkconfig erydb on > /dev/null 2>&1
+		else
+			cp $installdir/bin/erydb /etc/init.d/. >/dev/null 2>&1
+			updaterc=`which update-rc.d 2>/dev/null`
+			if [ -n "$updaterc" ]; then
+
+				update-rc.d erydb defaults 99 > /dev/null 2>&1
+			else
+				echo ""
+				echo "Package 'systemctl', 'chkconfig' or 'update-rc.d' not installed, contact your sysadmin if you want to setup to autostart for erydb"	
+			fi
+		fi
+	fi
+fi
+#setup erydb system logging
+if [ $user = "root" ]; then
+	$installdir/bin/syslogSetup.sh install > /tmp/syslog_install.log 2>&1
+	chmod 777 -R /dev/shm
+	rm -f /etc/default/erydb
+else
+	$SUDO rm -fr /tmp/* > /dev/null 2>&1
+	$SUDO $installdir/bin/syslogSetup.sh --installdir=$installdir install > /tmp/syslog_install.log 2>&1
+	$SUDO chown $user:$user $installdir/etc/erydb.xml
+	$SUDO chmod 755 /var/log
+	$SUDO chmod -R 755 /var/log/erydb
+	$SUDO chmod -R 777 /dev/shm
+	$SUDO mkdir /var/lock/subsys > /dev/null 2>&1
+	$SUDO chmod 777 /var/lock/subsys > /dev/null 2>&1
+	$SUDO rm -f /var/lock/subsys/mysql-erydb
+	$SUDO rm -f /tmp/StopErydb
+
+	sed -i -e s@/usr/local/erydb@$installdir@g $installdir/bin/erydb.def
+	$SUDO cp $installdir/bin/erydb.def /etc/default/erydb
+
+	sed -i -e s@prefix=/usr/local@prefix=$HOME@g $installdir/bin/*
+fi
+
+#check if erydb system logging was setup
+cat /tmp/syslog_install.log | grep 'No System Logging' >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	cat /tmp/syslog_install.log
+fi
+
+#backup copy of Alarm Config File
+/bin/cp -f $installdir/etc/AlarmConfig.xml $installdir/etc/AlarmConfig.xml.installSave > /dev/null 2>&1
+
+#setup alias commands
+eval userhome=~$user
+bashFile=$userhome/.bashrc
+touch ${bashFile}
+if [ $installdir != "/usr/local/erydb" ]; then
+	sed -i -e s@/usr/local/erydb@$installdir@g $installdir/bin/erydbAlias
+fi
+egrep -qs 'erydb Database Platform Alias Commands' ${bashFile}
+rc1=$?
+egrep -qs 'erydb Alias Commands' ${bashFile}
+rc2=$?
+if [ $rc1 -ne 0 -a $rc2 -ne 0 ]; then
+	rm -f ${bashFile}.erydbSave
+	cp ${bashFile} ${bashFile}.erydbSave >/dev/null 2>&1
+	cat $installdir/bin/erydbAlias >> ${bashFile}
+	echo " " >> ${bashFile}
+fi
+
+#check and get amazon env variables
+aws=`which aws 2>/dev/null`
+if [ -z "aws" ]; then
+	$installdir/bin/MCSgetCredentials.sh >/dev/null 2>&1
+fi
+
+#log install message
+test -f $installdir/post/functions && . $installdir/post/functions
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib $installdir/bin/cplogger -i 19 "***** erydb Installed *****"
+
+#setup hadoop
+hadoop=`which hadoop 2>/dev/null`
+if [ -z "$hadoop" ]; then
+	#check for non-root user
+	if [ $installdir != "/usr/local/erydb" -a $quiet -eq 0 ]; then
+cat <<EOD
+The next steps are:
+
+export ERYDB_INSTALL_DIR=$installdir
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib:$installdir/mysql/lib/plugin
+$installdir/bin/postConfigure -i $installdir
+
+EOD
+	else
+cat <<EOD
+The next step is:
+
+$installdir/bin/postConfigure
+
+EOD
+	fi
+        exit 0
+else
+	chmod 755 $installdir/bin/setenv-hdfs-12
+	chmod 755 $installdir/bin/setenv-hdfs-20
+
+	. $installdir/bin/setenv-hdfs-20
+	$installdir/bin/hdfsCheck $installdir/lib/hdfs-20.so > /tmp/hdfs-20-test.log 2>&1
+	if [ $? -eq 0 ]; then
+		#Passed set in config file
+		$installdir/bin/setConfig -d SystemConfig DataFilePlugin $installdir/lib/hdfs-20.so
+		$installdir/bin/setConfig -d SystemConfig DataFileEnvFile setenv-hdfs-20
+	
+		#check for non-root user
+		if [ $installdir != "/usr/local/erydb" -a $quiet -eq 0 ]; then
+cat <<EOD
+
+If you are intending to install erydb over Hadoop, the next steps are:
+
+export ERYDB_INSTALL_DIR=$installdir
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib:$installdir/mysql/lib/plugin
+. $installdir/bin/setenv-hdfs-20
+$installdir/bin/postConfigure -i $installdir
+
+If you are intending to install erydb without Hadoop, the next steps are:
+
+export ERYDB_INSTALL_DIR=$installdir
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib:$installdir/mysql/lib/plugin
+$installdir/bin/postConfigure -i $installdir
+
+EOD
+		else
+cat <<EOD
+
+If you are intending to install erydb over Hadoop, the next steps are:
+
+. $installdir/bin/setenv-hdfs-20
+$installdir/bin/postConfigure
+
+If you are intending to install erydb without Hadoop, the next step is:
+
+$installdir/bin/postConfigure
+
+EOD
+		fi
+	else
+		. $installdir/bin/setenv-hdfs-12
+		$installdir/bin/hdfsCheck $installdir/lib/hdfs-12.so > /tmp/hdfs-12-test.log 2>&1
+		if [ $? -eq 0 ]; then
+			#Passed set in config file
+			$installdir/bin/setConfig -d SystemConfig DataFilePlugin $installdir/lib/hdfs-12.so
+			$installdir/bin/setConfig -d SystemConfig DataFileEnvFile setenv-hdfs-12
+
+			if [ $installdir != "/usr/local/erydb" -a $quiet -eq 0 ]; then
+cat <<EOD
+
+If you are intending to install erydb over Hadoop, the next steps are:
+
+export ERYDB_INSTALL_DIR=$installdir
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib:$installdir/mysql/lib/plugin:$libpath
+. $installdir/bin/setenv-hdfs-12
+$installdir/bin/postConfigure -i $installdir
+
+If you are intending to install erydb without Hadoop, the next steps are:
+
+export ERYDB_INSTALL_DIR=$installdir
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$installdir/lib:$installdir/mysql/lib/plugin
+$installdir/bin/postConfigure -i $installdir
+
+EOD
+			else
+cat <<EOD
+
+If you are intending to install erydb over Hadoop, the next steps are:
+
+. $installdir/bin/setenv-hdfs-12
+$installdir/bin/postConfigure
+
+If you are intending to install erydb without Hadoop, the next step is:
+
+$installdir/bin/postConfigure
+
+EOD
+			fi
+		else
+cat <<EOD
+
+If you are intending to install erydb over Hadoop, the Hadoop sanity check did not pass.  
+Most likely there is an environment setup conflict or the hdfs services are down.
+Please Contact erydb Customer Support.
+EOD
+		fi
+	fi
+fi
+
+exit 0
+

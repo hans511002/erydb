@@ -48,6 +48,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/msg.h"
 #include "util/dbt.h"
 
+#define OS_PATH_SEPARATOR '/'
+
 typedef struct ft_handle *FT_HANDLE;
 
 int toku_open_ft_handle (const char *fname, int is_create, FT_HANDLE *, int nodesize, int basementnodesize, enum toku_compression_method compression_method, CACHETABLE, TOKUTXN, int(*)(DB *,const DBT*,const DBT*)) __attribute__ ((warn_unused_result));
@@ -206,6 +208,15 @@ int toku_dump_ft (FILE *,FT_HANDLE ft_h)  __attribute__ ((warn_unused_result));
 extern int toku_ft_debug_mode;
 int toku_verify_ft (FT_HANDLE ft_h)  __attribute__ ((warn_unused_result));
 int toku_verify_ft_with_progress (FT_HANDLE ft_h, int (*progress_callback)(void *extra, float progress), void *extra, int verbose, int keep_going)  __attribute__ ((warn_unused_result));
+
+int toku_ft_recount_rows(
+    FT_HANDLE ft,
+    int (*progress_callback)(
+        uint64_t count,
+        uint64_t deleted,
+        void* progress_extra),
+    void* progress_extra);
+
 
 DICTIONARY_ID toku_ft_get_dictionary_id(FT_HANDLE);
 

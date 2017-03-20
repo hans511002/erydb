@@ -266,31 +266,31 @@ void SPCBLK::WriteColumn(PGLOBAL g)
   } // end of WriteColumn
 
 /***********************************************************************/
-/*  RERYDBLK constructor for the ROWID special column.                   */
+/*  RIDBLK constructor for the ROWID special column.                   */
 /***********************************************************************/
-RERYDBLK::RERYDBLK(PCOLUMN cp, bool rnm) : SPCBLK(cp)
+RIDBLK::RIDBLK(PCOLUMN cp, bool rnm) : SPCBLK(cp)
   {
   Precision = Long = 10;
   Buf_Type = TYPE_INT;
   Rnm = rnm;
   *Format.Type = 'N';
   Format.Length = 10;
-  } // end of RERYDBLK constructor
+  } // end of RIDBLK constructor
 
 /***********************************************************************/
 /*  ReadColumn: what this routine does is to return the ordinal        */
 /*  number of the current row in the table (if Rnm is true) or in the  */
 /*  current file (if Rnm is false) the same except for multiple tables.*/
 /***********************************************************************/
-void RERYDBLK::ReadColumn(PGLOBAL g)
+void RIDBLK::ReadColumn(PGLOBAL g)
   {
   Value->SetValue(To_Tdb->RowNumber(g, Rnm));
   } // end of ReadColumn
 
 /***********************************************************************/
-/*  FERYDBLK constructor for the FILEID special column.                  */
+/*  FIDBLK constructor for the FILEID special column.                  */
 /***********************************************************************/
-FERYDBLK::FERYDBLK(PCOLUMN cp, OPVAL op) : SPCBLK(cp), Op(op)
+FIDBLK::FIDBLK(PCOLUMN cp, OPVAL op) : SPCBLK(cp), Op(op)
   {
 //Is_Key = 2; for when the MUL table indexed reading will be implemented.
   Precision = Long = _MAX_PATH;
@@ -304,13 +304,13 @@ FERYDBLK::FERYDBLK(PCOLUMN cp, OPVAL op) : SPCBLK(cp), Op(op)
               To_Tdb->GetAmType() != TYPE_AM_PLG &&
               To_Tdb->GetAmType() != TYPE_AM_PLM);
   Fn = NULL;
-  } // end of FERYDBLK constructor
+  } // end of FIDBLK constructor
 
 /***********************************************************************/
 /*  ReadColumn: what this routine does is to return the current        */
 /*  file ID of the table (can change for Multiple tables).             */
 /***********************************************************************/
-void FERYDBLK::ReadColumn(PGLOBAL g)
+void FIDBLK::ReadColumn(PGLOBAL g)
   {
   if (Fn != ((PTDBASE)To_Tdb)->GetFile(g)) {
     char filename[_MAX_PATH];
@@ -330,9 +330,9 @@ void FERYDBLK::ReadColumn(PGLOBAL g)
   } // end of ReadColumn
 
 /***********************************************************************/
-/*  TERYDBLK constructor for the TABID special column.                   */
+/*  TIDBLK constructor for the TABID special column.                   */
 /***********************************************************************/
-TERYDBLK::TERYDBLK(PCOLUMN cp) : SPCBLK(cp)
+TIDBLK::TIDBLK(PCOLUMN cp) : SPCBLK(cp)
   {
 //Is_Key = 2; for when the MUL table indexed reading will be implemented.
   Precision = Long = 64;
@@ -342,12 +342,12 @@ TERYDBLK::TERYDBLK(PCOLUMN cp) : SPCBLK(cp)
   Format.Prec = 1;          // Case insensitive
   Constant = (To_Tdb->GetAmType() != TYPE_AM_TBL);
   Tname = NULL;
-  } // end of TERYDBLK constructor
+  } // end of TIDBLK constructor
 
 /***********************************************************************/
 /*  ReadColumn: what this routine does is to return the table ID.      */
 /***********************************************************************/
-void TERYDBLK::ReadColumn(PGLOBAL)
+void TIDBLK::ReadColumn(PGLOBAL)
   {
   if (Tname == NULL) {
     Tname = (char*)To_Tdb->GetName();
@@ -389,9 +389,9 @@ void PRTBLK::ReadColumn(PGLOBAL g)
   } // end of ReadColumn
 
 /***********************************************************************/
-/*  SERYDBLK constructor for the SERVID special column.                  */
+/*  SIDBLK constructor for the SERVID special column.                  */
 /***********************************************************************/
-SERYDBLK::SERYDBLK(PCOLUMN cp) : SPCBLK(cp)
+SIDBLK::SIDBLK(PCOLUMN cp) : SPCBLK(cp)
   {
 //Is_Key = 2; for when the MUL table indexed reading will be implemented.
   Precision = Long = 64;
@@ -401,12 +401,12 @@ SERYDBLK::SERYDBLK(PCOLUMN cp) : SPCBLK(cp)
   Format.Prec = 1;          // Case insensitive
   Constant = (To_Tdb->GetAmType() != TYPE_AM_TBL);
   Sname = NULL;
-  } // end of TERYDBLK constructor
+  } // end of TIDBLK constructor
 
 /***********************************************************************/
 /*  ReadColumn: what this routine does is to return the server ID.     */
 /***********************************************************************/
-void SERYDBLK::ReadColumn(PGLOBAL)
+void SIDBLK::ReadColumn(PGLOBAL)
   {
 //if (Sname == NULL) {
     Sname = (char*)To_Tdb->GetServer();

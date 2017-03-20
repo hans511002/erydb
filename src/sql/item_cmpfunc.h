@@ -55,7 +55,6 @@ class Arg_comparator: public Sql_alloc
   Arg_comparator *comparators;   // used only for compare_row()
   double precision;
   /* Fields used in DATE/DATETIME comparison. */
-  THD *thd;
   Item *a_cache, *b_cache;         // Cached values of a and b items
                                    //   when one of arguments is NULL.
   int set_compare_func(Item_func_or_sum *owner, Item_result type);
@@ -70,12 +69,12 @@ public:
 
   Arg_comparator(): m_compare_type(STRING_RESULT),
     m_compare_collation(&my_charset_bin),
-    set_null(TRUE), comparators(0), thd(0),
+    set_null(TRUE), comparators(0),
     a_cache(0), b_cache(0) {};
   Arg_comparator(Item **a1, Item **a2): a(a1), b(a2),
     m_compare_type(STRING_RESULT),
     m_compare_collation(&my_charset_bin),
-    set_null(TRUE), comparators(0), thd(0),
+    set_null(TRUE), comparators(0),
     a_cache(0), b_cache(0) {};
 
 public:
@@ -951,7 +950,9 @@ public:
     maybe_null= args[1]->maybe_null;
   }
   const char *func_name() const { return "ifnull"; }
-  Field *tmp_table_field(TABLE *table);
+  Field *create_field_for_create_select(TABLE *table)
+  { return tmp_table_field_from_field_type(table, false, false); }
+
   table_map not_null_tables() const { return 0; }
   uint decimal_precision() const
   {
@@ -1007,6 +1008,7 @@ class Item_func_nullif :public Item_func_hybrid_field_type
   */
   Item_cache *m_cache;
   int compare();
+  Item *m_arg0;
 public:
   /*
     Here we pass three arguments to the parent constructor, as NULLIF
@@ -1018,8 +1020,14 @@ public:
   */
   Item_func_nullif(THD *thd, Item *a, Item *b):
     Item_func_hybrid_field_type(thd, a, b, a),
-    m_cache(NULL)
+    m_cache(NULL),
+    m_arg0(NULL)
   { arg_count--; }
+  void cleanup()
+  {
+    Item_func_hybrid_field_type::cleanup();
+    arg_count= 2; // See the comment to the constructor
+  }
   bool date_op(MYSQL_TIME *ltime, uint fuzzydate);
   double real_op();
   longlong int_op();
@@ -1185,15 +1193,13 @@ public:
 class in_datetime :public in_longlong
 {
 public:
-  THD *thd;
   /* An item used to issue warnings. */
   Item *warn_item;
   /* Cache for the left item. */
   Item *lval_cache;
 
   in_datetime(Item *warn_item_arg, uint elements)
-    :in_longlong(elements), thd(current_thd), warn_item(warn_item_arg),
-     lval_cache(0) {};
+    :in_longlong(elements), warn_item(warn_item_arg), lval_cache(0) {};
   void set(uint pos,Item *item);
   uchar *get_value(Item *item);
   Item *create_item(THD *thd);
@@ -1363,14 +1369,13 @@ class cmp_item_datetime : public cmp_item_scalar
 {
   longlong value;
 public:
-  THD *thd;
   /* Item used for issuing warnings. */
   Item *warn_item;
   /* Cache for the left item. */
   Item *lval_cache;
 
   cmp_item_datetime(Item *warn_item_arg)
-    :thd(current_thd), warn_item(warn_item_arg), lval_cache(0) {}
+    : warn_item(warn_item_arg), lval_cache(0) {}
   void store_value(Item *item);
   int cmp(Item *arg);
   int compare(cmp_item *ci);
@@ -1670,10 +1675,26 @@ public:
     update_used_tables();
   }
   const char *func_name() const { return "isnull"; }
+
+  bool arg_is_datetime_notnull_field()
+  {
+    Item **args= arguments();
+    if (args[0]->type() == Item::FIELD_ITEM)
+    {
+      Field *field=((Item_field*) args[0])->field;
+
+      if (((field->type() == MYSQL_TYPE_DATE) ||
+          (field->type() == MYSQL_TYPE_DATETIME)) &&
+          (field->flags & NOT_NULL_FLAG))
+        return true;
+    }
+    return false;
+  }
+
   /* Optimize case of not_null_column IS NULL */
   virtual void update_used_tables()
   {
-    if (!args[0]->maybe_null)
+    if (!args[0]->maybe_null && !arg_is_datetime_notnull_field())
     {
       used_tables_cache= 0;			/* is always false */
       const_item_cache= 1;
@@ -2562,4 +2583,3 @@ extern Ge_creator ge_creator;
 extern Le_creator le_creator;
 
 #endif /* ITEM_CMPFUNC_INCLUDED */
-

@@ -1,6 +1,6 @@
 /*
-   Copyright (c) 2002, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2011, 2013, Monty Program Ab
+   Copyright (c) 2002, 2016, Oracle and/or its affiliates.
+   Copyright (c) 2011, 2016, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -534,18 +534,16 @@ sp_name::init_qname(THD *thd)
 bool
 check_routine_name(LEX_STRING *ident)
 {
-  if (!ident || !ident->str || !ident->str[0] ||
-      ident->str[ident->length-1] == ' ')
+  DBUG_ASSERT(ident);
+  DBUG_ASSERT(ident->str);
+
+  if (!ident->str[0] || ident->str[ident->length-1] == ' ')
   {
     my_error(ER_SP_WRONG_NAME, MYF(0), ident->str);
     return TRUE;
   }
-  if (check_string_char_length(ident, 0, NAME_CHAR_LEN,
-                               system_charset_info, 1))
-  {
-    my_error(ER_TOO_LONG_IDENT, MYF(0), ident->str);
+  if (check_ident_length(ident))
     return TRUE;
-  }
 
   return FALSE;
 }
@@ -3127,23 +3125,23 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
                                           thd->query_length()) <= 0)
     {
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
+      bool log_slow= !res && thd->enable_slow_log;
 
-      if (thd->get_stmt_da()->is_eof())
-      {
-        /* Finalize server status flags after executing a statement. */
+      /* Finalize server status flags after executing a statement. */
+      if (log_slow || thd->get_stmt_da()->is_eof())
         thd->update_server_status();
 
+      if (thd->get_stmt_da()->is_eof())
         thd->protocol->end_statement();
-      }
 
       query_cache_end_of_result(thd);
 
       mysql_audit_general(thd, MYSQL_AUDIT_GENERAL_STATUS,
-                         thd->get_stmt_da()->is_error() ?
-                                thd->get_stmt_da()->sql_errno() : 0,
-                         command_name[COM_QUERY].str);
+                          thd->get_stmt_da()->is_error() ?
+                                 thd->get_stmt_da()->sql_errno() : 0,
+                          command_name[COM_QUERY].str);
 
-      if (!res && unlikely(thd->enable_slow_log))
+      if (log_slow)
         log_slow_statement(thd);
     }
     else

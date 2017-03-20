@@ -313,7 +313,7 @@ indexer_undo_do_provisional(DB_INDEXER *indexer, DB *hotdb, struct ule_prov_info
             break;
 
         if (outermost_xid_state != TOKUTXN_LIVE && xrindex > num_committed) {
-            // if the outermost is not live, then the inner state must be retired.  thats the way that the txn API works.
+            // If the outermost is not live, then the inner state must be retired.  That's the way that the txn API works.
             assert(this_xid_state == TOKUTXN_RETIRED);
         }
 
@@ -528,7 +528,7 @@ indexer_find_prev_xr(DB_INDEXER *UU(indexer), ULEHANDLE ule, uint64_t xrindex, u
 }
 
 // inject "delete" message into ft with logging in recovery and rollback logs,
-// and making assocation between txn and ft
+// and making association between txn and ft
 static int 
 indexer_ft_delete_provisional(DB_INDEXER *indexer, DB *hotdb, DBT *hotkey, XIDS xids, TOKUTXN txn) {
     int result = 0;
@@ -577,7 +577,7 @@ indexer_ft_delete_committed(DB_INDEXER *indexer, DB *hotdb, DBT *hotkey, XIDS xi
 }
 
 // inject "insert" message into ft with logging in recovery and rollback logs,
-// and making assocation between txn and ft
+// and making association between txn and ft
 static int 
 indexer_ft_insert_provisional(DB_INDEXER *indexer, DB *hotdb, DBT *hotkey, DBT *hotval, XIDS xids, TOKUTXN txn) {
     int result = 0;

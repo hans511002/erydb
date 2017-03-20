@@ -1,0 +1,152 @@
+#!/bin/bash
+#
+# $Id: post-mysqld-install 3661 2013-06-25 22:04:33Z dhill $
+#
+# Post-install steps for erydb-mysql install
+
+prefix=/usr/local
+installdir=$prefix/erydb
+rpmmode=install
+user=mysql
+if [ $EUID -ne 0 ]; then
+	user=$USER
+fi
+
+for arg in "$@"; do
+	if [ `expr -- "$arg" : '--prefix='` -eq 9 ]; then
+		prefix="`echo $arg | awk -F= '{print $2}'`"
+		installdir=$prefix/erydb
+	elif [ `expr -- "$arg" : '--rpmmode='` -eq 10 ]; then
+		rpmmode="`echo $arg | awk -F= '{print $2}'`"
+	elif [ `expr -- "$arg" : '--installdir='` -eq 13 ]; then
+		installdir="`echo $arg | awk -F= '{print $2}'`"
+		prefix=`dirname $installdir`
+	elif [ `expr -- "$arg" : '--user='` -eq 7 ]; then
+		user="`echo $arg | awk -F= '{print $2}'`"
+	else
+		echo "post-mysqld-install: ignoring unknown argument: $arg" 1>&2
+	fi
+done
+
+cd $installdir/mysql/lib
+for file in libmysqlclient libmysqlclient_r; do
+	ln -sf $file.so.18.0.0 $file.so
+	ln -sf $file.so.18.0.0 $file.so.18
+done
+cd $installdir/mysql/lib/plugin
+for file in ha_archive ha_blackhole ha_federated ha_innodb; do
+	ln -sf $file.so $file.so.0
+done
+
+if [ -f "$installdir/mysql/bin/libgalera_smm.so" ] ; then
+		mkdir -p /usr/lib64/galera-3 
+		mv $installdir/mysql/bin/libgalera_smm.so /usr/lib64/galera-3/
+fi
+if [ -f "$installdir/mysql/bin/garb.service" ] ; then
+		mv $installdir/mysql/bin/garb.service /usr/lib/systemd/system/garb.service
+fi
+if [ -f "$installdir/mysql/bin/garb-systemd" ] ; then
+		mv $installdir/mysql/bin/garb-systemd /usr/bin/
+fi
+if [ -f "$installdir/mysql/bin/garbd" ] ; then
+		mv $installdir/mysql/bin/garbd /usr/bin/
+fi
+
+### taken from MySQL-server-5.1.30-0.glibc23.i386.rpm
+mysql_datadir=$installdir/mysql/db
+
+# Create data directory if needed
+if test ! -d $mysql_datadir; then mkdir -m 755 $mysql_datadir; fi
+if test ! -d $mysql_datadir/mysql; then mkdir $mysql_datadir/mysql; fi
+if test ! -d $mysql_datadir/test; then mkdir $mysql_datadir/test; fi
+if test ! -d $installdir/mysql/lib; then mkdir $installdir/mysql/lib; fi
+if test ! -d $installdir/mysql/lib/mysql; then mkdir $installdir/mysql/lib/mysql; fi
+
+# Create a MySQL user and group. Do not report any problems if it already
+# exists.
+groupadd -r $user 2> /dev/null || true
+useradd -m -r -d $mysql_datadir -s /bin/bash -c "MySQL server" -g $user $user 2> /dev/null || true
+# The user may already exist, make sure it has the proper group nevertheless (BUG#12823)
+usermod -g $user $user 2> /dev/null || true
+
+# Change permissions so that the user that will run the MySQL daemon
+# owns all database files.
+chown -R $user:$user $installdir/mysql
+
+# Initiate databases if needed
+if [ $installdir != "/usr/local/erydb" ]; then
+	sed -i -e s@/usr/local/erydb@$installdir@g $installdir/mysql/my.cnf
+fi
+
+# EryDB testing hook...
+test -x /usr/local/bin/erydb-testing-mysql-pre-start && /usr/local/bin/erydb-testing-mysql-pre-start $installdir/mysql
+
+
+rm -rf /etc/my.cnf && ln -sf $installdir/mysql/my.cnf /etc/my.cnf 
+logError=`cat /etc/my.cnf |grep "log-error"|awk -F= '{print $2}'`
+if [ "$logError" != "" ] ; then
+	logError=`dirname "$logError"`
+	mkdir -p $logError
+else
+   mkdir -p /var/log/mariadb
+fi
+pidFile=`cat /etc/my.cnf |grep "pid-file"|awk -F= '{print $2}'`
+if [ "$pidFile" != "" ] ; then
+	pidFile=`dirname "$pidFile"`
+	mkdir -p $pidFile
+else
+   mkdir -p /var/run/mariadb
+fi
+
+### Don't give the user the notes, we'll fix them ourselves...
+$installdir/mysql/scripts/mysql_install_db --rpm --user=$user --defaults-file=$installdir/mysql/my.cnf --basedir=$installdir/mysql >/dev/null
+echo " Change permissions again to fix any new files."
+chown -R $user:$user $mysql_datadir
+
+# Fix permissions for the permission database so that only the user
+# can read them.
+chmod -R og-rw $mysql_datadir/mysql
+
+# Change permissions again to fix any new files.
+chown -R $user.$user $installdir/mysql
+
+test -e /etc/init.d/mysql-erydb || cp $installdir/mysql/mysql-erydb /etc/init.d >/dev/null 2>&1
+if [ -f $installdir/lib/liberymysql.so.1.0.0 ]; then
+	liberymysql=$installdir/lib/liberymysql.so.1.0.0
+	libudfsdk=$installdir/lib/libudfsdk.so.1.0.0
+	libudfmysql=$installdir/lib/libudf_mysql.so.1.0.0
+    is_erydb_tables=$installdir/lib/is_erydb_tables.so.1.0.0
+    is_erydb_columns=$installdir/lib/is_erydb_columns.so.1.0.0
+    is_erydb_extents=$installdir/lib/is_erydb_extents.so.1.0.0
+    is_erydb_files=$installdir/lib/is_erydb_files.so.1.0.0
+elif [ -f $installdir/lib/liberymysql.so.1 ]; then
+	liberymysql=$installdir/lib/liberymysql.so.1
+	libudfsdk=$installdir/lib/libudfsdk.so.1
+	libudfmysql=$installdir/lib/libudf_mysql.so.1
+    is_erydb_tables=$installdir/lib/is_erydb_tables.so.1
+    is_erydb_columns=$installdir/lib/is_erydb_columns.so.1
+    is_erydb_extents=$installdir/lib/is_erydb_extents.so.1
+    is_erydb_files=$installdir/lib/is_erydb_files.so.1
+else
+	liberymysql=
+fi
+
+if [ -n "$liberymysql" ]; then
+
+	cd $installdir/mysql/lib/plugin
+	ln -sf $liberymysql liberymysql.so
+        ln -sf $liberymysql liberymysqlent.so
+	ln -sf $libudfmysql libudf_mysql.so
+	ln -sf $libudfsdk libudfsdk.so
+    ln -sf $is_erydb_tables is_erydb_tables.so
+    ln -sf $is_erydb_columns is_erydb_columns.so
+    ln -sf $is_erydb_extents is_erydb_extents.so
+    ln -sf $is_erydb_files is_erydb_files.so
+fi
+
+# cleanup previous install mysql replication files
+rm -rf $mysql_datadir/*relay*
+rm -rf $mysql_datadir/mysql-bin.*
+rm -rf $mysql_datadir/master.info
+
+exit 0
