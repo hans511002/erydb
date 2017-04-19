@@ -87,7 +87,7 @@
 		<ColScanBufferSizeBlocks>512</ColScanBufferSizeBlocks>
 		<ColScanReadAheadBlocks>512</ColScanReadAheadBlocks> <!-- s/b factor of extent size 8192 -->
 		<!-- <BPPCount>16</BPPCount> --> <!-- Default num cores * 2.  A cap on the number of simultaneous primitives per jobstep -->
-		<PrefetchThreshold>1</PrefetchThreshold>
+		<PrefetchThreshold>5</PrefetchThreshold>
 		<PTTrace>0</PTTrace>
 		<RotatingDestination>y</RotatingDestination> <!-- Iterate thru UM ports; set to 'n' if UM/PM on same server -->
 		<!-- <HighPriorityPercentage>60</HighPriorityPercentage> -->
@@ -346,7 +346,7 @@
 		<TxnIDFile>$INSTALLDIR/data1/systemFiles/dbrm/SMTxnID</TxnIDFile>
 	</SessionManager>
 	<VersionBuffer>
-		<!-- VersionBufferFileSize must be a multiple of 8192.
+		<!-- VersionBufferFileSize must be a multiple of 8192.  回滚缓冲区大小
 		One version buffer file will be put on each DB root. -->
 		<VersionBufferFileSize>1GB</VersionBufferFileSize>
 	</VersionBuffer>
@@ -420,8 +420,9 @@
 	</DBRM_Worker10>
 	<DBBC>
 		<!-- The percentage of RAM to use for the disk block cache. Defaults to 70% -->
-		<!-- <NumBlocksPct>70</NumBlocksPct> -->
+		
 		<!-- <NumThreads>16</NumThreads> --> <!-- 1-256.  Default is 16. -->
+		<NumBlocksPct>70</NumBlocksPct><!-- 数据缓存百分比  -->
 		<NumCaches>1</NumCaches><!-- # of parallel caches to instantiate -->
 		<IOMTracing>0</IOMTracing>
 		<BRPTracing>0</BRPTracing>
