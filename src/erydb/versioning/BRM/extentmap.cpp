@@ -59,7 +59,7 @@ namespace bi=boost::interprocess;
 #include "ERYDBDataFile.h"
 #include "ERYDBPolicy.h"
 #ifdef BRM_INFO
- #error BRM_INFO is broken right now
+// #error BRM_INFO is broken right now
  #include "tracer.h"
  #include "configcpp.h"
 #endif
@@ -1009,7 +1009,7 @@ void ExtentMap::reserveLBIDRange(LBID_t start, uint8_t size)
 						if (fFreeList[freeIndex].size == 0)
 							break;
 #ifdef BRM_DEBUG
-				erydbassert(nextIndex < flEntries);
+				erydbassert(freeIndex < flEntries);
 #endif
 			}
 			makeUndoRecord(&fFreeList[i], sizeof(InlineLBIDRange));
@@ -4379,9 +4379,9 @@ void ExtentMap::deletePartition(const set<OID_t>& oids,
 		TRACER_WRITENOW("deletePartition");
 		ostringstream oss;
 		set<LogicalPartition>::const_iterator partIt;
-		oss << "partitionNums: " 
-		for (partIt=partitionNums.begin(); it!=partitionNums.end(); ++it)
-			oss << (*it) << " ";
+		oss << "partitionNums: " ;
+		for (partIt=partitionNums.begin(); partIt!=partitionNums.end(); ++partIt)
+			oss << (*partIt) << " ";
 
 		oss << endl;
 		oss << "OIDS: ";
@@ -4472,9 +4472,9 @@ void ExtentMap::markPartitionForDeletion(const set<OID_t>& oids,
 		TRACER_WRITENOW("markPartitionForDeletion");
 		ostringstream oss;
 		set<LogicalPartition>::const_iterator partIt;
-		oss << "partitionNums: " 
-		for (partIt=partitionNums.begin(); it!=partitionNums.end(); ++it)
-			oss << (*it) << " ";
+		oss << "partitionNums: " ;
+		for (partIt=partitionNums.begin(); partIt!=partitionNums.end(); ++partIt)
+			oss << (*partIt) << " ";
 
 		oss << endl;
 		oss << "OIDS: ";
@@ -4616,9 +4616,9 @@ void ExtentMap::restorePartition(const set<OID_t>& oids,
 		TRACER_WRITENOW("restorePartition");
 		ostringstream oss;
 		set<LogicalPartition>::const_iterator partIt;
-		oss << "partitionNums: " 
-		for (partIt=partitionNums.begin(); it!=partitionNums.end(); ++it)
-			oss << (*it) << " ";
+		oss << "partitionNums: " ;
+		for (partIt=partitionNums.begin(); partIt!=partitionNums.end(); ++partIt)
+			oss << (*partIt) << " ";
 		oss << endl;
 		oss << "OIDS: ";
 		set<OID_t>::const_iterator it;
@@ -4766,7 +4766,7 @@ bool ExtentMap::isDBRootEmpty(uint16_t dbroot)
 	if (fDebug)
 	{
 		TRACER_WRITELATER("isDBRootEmpty");
-		TRACER_ADDINPUT(OID);
+		TRACER_ADDINPUT(dbroot);
 		TRACER_WRITE;
 	}
 #endif

@@ -257,7 +257,6 @@ void BlockOp::setEmptyBuf(
                   emptyValArray,
                   width*countRemain );
     }
-     free(emptyValArray);
 }
 
 /***********************************************************

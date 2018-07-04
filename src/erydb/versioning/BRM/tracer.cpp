@@ -33,7 +33,7 @@
 #define TRACER_DLLEXPORT
 #include "tracer.h"
 #undef TRACER_DLLEXPORT
-
+#include <unistd.h>
 using namespace std;
 
 namespace BRM {
