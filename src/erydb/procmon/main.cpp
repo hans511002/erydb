@@ -1647,16 +1647,16 @@ static void statusControlThread()
 	{
 #if BOOST_VERSION < 104500
 		bi::shared_memory_object shm(bi::create_only, keyName.c_str(), bi::read_write);
+#else
+		bi::permissions perms;
+		perms.set_unrestricted();
+		bi::shared_memory_object shm(bi::create_only, keyName.c_str(), bi::read_write, perms);
+#endif
 #ifdef __linux__
 		{
 			string pname = "/dev/shm/" + keyName;
 			chmod(pname.c_str(), 0666);
 		}
-#endif
-#else
-		bi::permissions perms;
-		perms.set_unrestricted();
-		bi::shared_memory_object shm(bi::create_only, keyName.c_str(), bi::read_write, perms);
 #endif
 		shm.truncate(PROCSTATshmsize);
 		fProcStatShmobj.swap(shm);
@@ -1695,7 +1695,7 @@ static void statusControlThread()
 	//
 	fmoduleNumber++;		//add 1 to cover system status entry
 
-	static const int SYSTEMSTATshmsize = MAX_MODULE * sizeof(shmDeviceStatus);
+	static const int SYSTEMSTATshmsize = (MAX_MODULE+1) * sizeof(shmDeviceStatus);
 	memInit = true;
 #if 0
 	shmid = shmget(fShmKeys.SYSTEMSTATUS_SYSVKEY, SYSTEMSTATshmsize, IPC_EXCL | IPC_CREAT | 0666);

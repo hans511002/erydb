@@ -168,6 +168,8 @@ void	MonitorLog::writeLog(const int lineNumber, const string logContent, const L
 	MessageLog ml(lid);
 	Message msg;
 	Message::Args args;
+	args.add("line:");
+	args.add(lineNumber);
 	args.add(logContent);
 	msg.format(args);
 
@@ -182,8 +184,6 @@ void	MonitorLog::writeLog(const int lineNumber, const string logContent, const L
 			ml.logWarningMessage(msg);
 			break;
 		case LOG_TYPE_ERROR:
-			args.add("line:");
-			args.add(lineNumber);
 			ml.logErrorMessage(msg);
 			break;
 		case LOG_TYPE_CRITICAL:
